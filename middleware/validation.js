@@ -3,6 +3,16 @@ const { ZodError } = require("zod");
 const validate = (schema, property = "body") => {
   return (req, res, next) => {
     try {
+      console.log(`[${new Date().toISOString()}] VALIDATION DEBUG:`, {
+        method: req.method,
+        path: req.path,
+        headers: req.headers,
+        body: req.body,
+        property: property,
+        hasBody: !!req.body,
+        bodyType: typeof req.body
+      });
+      
       const dataToValidate = property === "query" ? req.query : req[property];
       const validatedData = schema.parse(dataToValidate);
 

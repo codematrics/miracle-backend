@@ -13,7 +13,7 @@ const {
 
 const patientSchema = new mongoose.Schema(
   {
-    uhid: { type: String, unique: true, required: true },
+    uhid: { type: String, unique: true },
     patientName: { type: String, required: true },
     relation: {
       type: String,
