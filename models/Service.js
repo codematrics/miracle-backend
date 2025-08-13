@@ -61,10 +61,9 @@ const serviceSchema = new mongoose.Schema(
       },
       default: 'active'
     },
-    // Keep old fields for backward compatibility
+    // Keep old fields for backward compatibility (no unique constraints)
     serviceId: { 
-      type: String, 
-      unique: true,
+      type: String,
       sparse: true
     },
     serviceName: { 
@@ -73,8 +72,7 @@ const serviceSchema = new mongoose.Schema(
     },
     serviceCode: { 
       type: String,
-      trim: true,
-      sparse: true
+      trim: true
     },
   },
   { timestamps: true }
