@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patient');
+const serviceRoutes = require('./routes/service');
 const enumRoutes = require('./routes/enums');
 const { securityMiddleware, authLimiter, apiLimiter } = require('./middleware/security');
 
@@ -32,6 +33,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/hospitalm
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/patients', apiLimiter, patientRoutes);
+app.use('/api/services', apiLimiter, serviceRoutes);
 app.use('/api/enums', enumRoutes);
 
 app.use((err, req, res, next) => {

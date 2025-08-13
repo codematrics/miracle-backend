@@ -78,6 +78,7 @@ router.get(
         id: p._id.toString(),
         label: p.patientName,
         fathername: p.fatherOrHusbandName,
+        uhid: p.uhid,
         UHID: p.uhid,
         mobileno: p.mobileNo,
         age: `${p.age} ${p.ageUnit}`, // Mongoose doesn't combine fields for us here

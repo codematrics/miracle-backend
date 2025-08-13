@@ -70,34 +70,34 @@ const patientSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Pre-save middleware to generate UHID and handle empty strings
 patientSchema.pre("save", async function (next) {
-  // Generate UHID if not provided
   if (!this.uhid) {
     const currentYear = new Date().getFullYear();
-    const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-    const currentDay = String(new Date().getDate()).padStart(2, '0');
-    
-    // Find the last patient created today to get next sequence number
+    const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
+    const currentDay = String(new Date().getDate()).padStart(2, "0");
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    const lastPatient = await this.constructor.findOne({
-      createdAt: { $gte: today, $lt: tomorrow }
-    }).sort({ createdAt: -1 });
-    
+
+    const lastPatient = await this.constructor
+      .findOne({
+        createdAt: { $gte: today, $lt: tomorrow },
+      })
+      .sort({ createdAt: -1 });
+
     let sequenceNumber = 1;
     if (lastPatient && lastPatient.uhid) {
       const lastSequence = parseInt(lastPatient.uhid.slice(-2));
       sequenceNumber = lastSequence + 1;
     }
-    
-    this.uhid = `MH1000${currentYear}${currentMonth}${currentDay}${String(sequenceNumber).padStart(2, '0')}`;
+
+    this.uhid = `MH1000${currentYear}${currentMonth}${currentDay}${String(
+      sequenceNumber
+    ).padStart(2, "0")}`;
   }
 
-  // Convert empty strings to null for optional enum fields
   const optionalEnumFields = ["maritalStatus", "religion", "occupation"];
   optionalEnumFields.forEach((field) => {
     if (this[field] === "") {
@@ -105,7 +105,6 @@ patientSchema.pre("save", async function (next) {
     }
   });
 
-  // Also handle emailId
   if (this.emailId === "") {
     this.emailId = null;
   }
