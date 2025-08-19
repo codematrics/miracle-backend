@@ -10,9 +10,9 @@ const validate = (schema, property = "body") => {
         body: req.body,
         property: property,
         hasBody: !!req.body,
-        bodyType: typeof req.body
+        bodyType: typeof req.body,
       });
-      
+
       const dataToValidate = property === "query" ? req.query : req[property];
       const validatedData = schema.parse(dataToValidate);
 

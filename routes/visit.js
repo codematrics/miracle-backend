@@ -8,6 +8,7 @@ const {
   updateVisitSchema,
   visitQuerySchema,
 } = require("../validations/visitSchema");
+const { paginate, buildSearchQuery, buildDateRangeQuery, combineQueries } = require("../lib/pagination");
 
 const router = express.Router();
 
@@ -19,45 +20,32 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
   try {
     const { page, limit, search, status, patientId, from, to } = req.query;
 
-    let query = {};
+    // Build individual query parts
+    const statusQuery = status ? { status } : {};
+    const patientQuery = patientId ? { patientId } : {};
+    const dateQuery = buildDateRangeQuery('visitDate', from, to);
+    const searchQuery = buildSearchQuery(search, [
+      'visitId',
+      'refby',
+      'visitingdoctor',
+      'visittype'
+    ]);
 
-    // Status filter
-    if (status) {
-      query.status = status;
-    }
+    // Combine all queries
+    const finalQuery = combineQueries(statusQuery, patientQuery, dateQuery, searchQuery);
 
-    // Patient filter
-    if (patientId) {
-      query.patientId = patientId;
-    }
-
-    // Date range filter
-    if (from || to) {
-      query.visitDate = {};
-      if (from) query.visitDate.$gte = new Date(from);
-      if (to) query.visitDate.$lte = new Date(to);
-    }
-
-    // Text search in visit ID, patient info, doctor, etc.
-    if (search) {
-      query.$or = [
-        { visitId: { $regex: search, $options: "i" } },
-        { refby: { $regex: search, $options: "i" } },
-        { visitingdoctor: { $regex: search, $options: "i" } },
-        { visittype: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const visits = await Visit.find(query)
-      .populate("patientId", "patientName uhid mobileNo")
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Visit.countDocuments(query);
+    const result = await paginate(Visit, {
+      query: finalQuery,
+      page,
+      limit,
+      populate: {
+        path: "patientId",
+        select: "patientName uhid mobileNo"
+      }
+    });
 
     // Format data for response
-    const formattedVisits = visits.map((visit) => ({
+    const formattedVisits = result.data.map((visit) => ({
       id: visit._id,
       visitId: visit.visitId,
       patient: visit.patientId
@@ -83,19 +71,14 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
 
     console.log(
       `[${new Date().toISOString()}] GET /api/visits - SUCCESS 200 - Retrieved ${
-        visits.length
+        result.data.length
       } visits`
     );
     res.json({
       success: true,
       data: formattedVisits,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        total: total,
-        limit: limit,
-      },
-      total,
+      pagination: result.pagination,
+      total: result.total,
     });
   } catch (error) {
     console.error(

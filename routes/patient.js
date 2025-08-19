@@ -5,6 +5,7 @@ const {
   createPatientSchema,
   patientQuerySchema,
 } = require("../validations/patientSchema");
+const { paginate, buildSearchQuery } = require("../lib/pagination");
 
 const router = express.Router();
 
@@ -15,35 +16,28 @@ router.get("/", validate(patientQuerySchema, "query"), async (req, res) => {
   try {
     const { page, limit, search } = req.query;
 
-    let query = {};
-    if (search) {
-      query = {
-        $or: [
-          { patientName: { $regex: search, $options: "i" } },
-          { mobileNo: { $regex: search, $options: "i" } },
-          { idNo: { $regex: search, $options: "i" } },
-        ],
-      };
-    }
+    const searchQuery = buildSearchQuery(search, [
+      "patientName",
+      "mobileNo",
+      "idNo",
+    ]);
 
-    const patients = await Patient.find(query)
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Patient.countDocuments(query);
+    const result = await paginate(Patient, {
+      query: searchQuery,
+      page,
+      limit,
+    });
 
     console.log(
       `[${new Date().toISOString()}] GET /api/patients - SUCCESS 200 - Retrieved ${
-        patients.length
+        result.data.length
       } patients`
     );
     res.json({
       success: true,
-      data: patients,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+      data: result.data,
+      pagination: result.pagination,
+      total: result.total,
     });
   } catch (error) {
     console.error(
@@ -70,7 +64,7 @@ router.get(
     try {
       const patients = await Patient.find()
         .select(
-          "_id patientName fatherOrHusbandName uhid mobileNo age ageUnit gender"
+          "_id patientName fatherOrHusbandName uhid mobileNo age ageUnit gender patientType"
         ) // only needed fields
         .lean();
 
@@ -81,7 +75,8 @@ router.get(
         uhid: p.uhid,
         UHID: p.uhid,
         mobileno: p.mobileNo,
-        age: `${p.age} ${p.ageUnit}`, // Mongoose doesn't combine fields for us here
+        age: p.age,
+        patientType: p.patientType,
         gender:
           p.gender === "Male" ? "M" : p.gender === "Female" ? "F" : p.gender,
       }));
