@@ -13,6 +13,7 @@ const enumRoutes = require("./routes/enums");
 const opdBillingRoutes = require("./routes/opdBilling");
 const labRoutes = require("./routes/lab");
 const pathologyRoutes = require("./routes/pathology");
+const doctorRoutes = require("./routes/doctor");
 const {
   securityMiddleware,
   authLimiter,
@@ -54,6 +55,7 @@ app.use("/api/services", apiLimiter, serviceRoutes);
 app.use("/api/visits", apiLimiter, visitRoutes);
 app.use("/api/opd-billing", apiLimiter, opdBillingRoutes);
 app.use("/api/pathology", apiLimiter, pathologyRoutes);
+app.use("/api/doctors", apiLimiter, doctorRoutes);
 app.use("/api/enums", enumRoutes);
 
 app.get("/", (req, res) => {
