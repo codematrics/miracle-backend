@@ -295,24 +295,87 @@ router.post("/", validate(createOpdBillingSchema), async (req, res) => {
     await opdBill.save();
 
     // --- 🔥 Auto Create Lab Orders ---
-    const labServices = existingServices.filter((s) =>
-      ["pathology", "radiology"].includes(s.category)
+    const pathologyServices = existingServices.filter(
+      (s) => s.category === "pathology"
+    );
+    const radiologyServices = existingServices.filter(
+      (s) => s.category === "radiology"
     );
 
-    if (labServices.length > 0) {
-      for (const service of labServices) {
-        const order = new LabOrder({
-          patientId: opdBill.patientId,
-          opdBillingId: opdBill._id,
-          doctorName: billData.consultantDoctor,
-          orderDate: new Date(),
-          status: ORDER_STATUS.PENDING,
-          patientInfo: billData.patientInfo,
+    // Create separate lab orders for pathology and radiology
+    const createLabOrderForCategory = async (services, category) => {
+      if (services.length === 0) return null;
+
+      const order = new LabOrder({
+        patientId: opdBill.patientId,
+        opdBillingId: opdBill._id,
+        doctorName: billData.consultantDoctor,
+        doctorSpecialization: billData.doctorSpecialization || "",
+        orderDate: new Date(),
+        status: ORDER_STATUS.PENDING,
+        patientInfo: billData.patientInfo,
+      });
+      await order.save();
+
+      // Create LabOrderTest for each service in this category
+      for (const service of services) {
+        const labOrderTest = new (require("../models/LabOrderTest"))({
+          labOrderId: order._id,
+          serviceId: service._id,
+          status: "pending",
+          serviceInfo: {
+            name: service.name,
+            code: service.code,
+            category: service.category,
+          },
         });
-        await order.save();
+        await labOrderTest.save();
+
+        // Create placeholder LabResults for each parameter of this service
+        const parameters = await require("../models/ParameterMaster")
+          .find({
+            serviceId: service._id,
+            isActive: true,
+          })
+          .sort({ sortOrder: 1 });
+
+        for (const parameter of parameters) {
+          const labResult = new (require("../models/LabResult"))({
+            labOrderTestId: labOrderTest._id,
+            parameterId: parameter._id,
+            value: "",
+            unit: parameter.unit || "",
+            referenceRange: parameter.referenceRange || "",
+            status: "pending",
+            enteredBy: opdBill.patientId, // Temporary - should be actual user
+            parameterInfo: {
+              name: parameter.parameterName,
+              code: parameter.parameterCode,
+              dataType: parameter.dataType,
+              methodology: parameter.methodology,
+            },
+          });
+          await labResult.save();
+        }
       }
+
+      return order;
+    };
+
+    const pathologyOrder = await createLabOrderForCategory(
+      pathologyServices,
+      "pathology"
+    );
+    const radiologyOrder = await createLabOrderForCategory(
+      radiologyServices,
+      "radiology"
+    );
+
+    const createdOrders = [pathologyOrder, radiologyOrder].filter(Boolean);
+
+    if (createdOrders.length > 0) {
       console.log(
-        `[OPD-BILLING] Lab Orders created for bill ${opdBill.billId}`
+        `[OPD-BILLING] Created ${createdOrders.length} lab orders for bill ${opdBill.billId} (${pathologyServices.length} pathology, ${radiologyServices.length} radiology services)`
       );
     }
 

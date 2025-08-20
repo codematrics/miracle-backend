@@ -1,130 +1,133 @@
 const mongoose = require("mongoose");
+const { CONTAINER_TYPES, SAMPLE_TYPES } = require("../constants/enums");
 
 const labOrderTestSchema = new mongoose.Schema(
   {
     labOrderId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'LabOrder',
+      ref: "LabOrder",
       required: true,
-      index: true
+      index: true,
     },
     serviceId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Service',
+      ref: "Service",
       required: true,
-      index: true
+      index: true,
     },
     status: {
       type: String,
-      enum: ['pending', 'collected', 'saved', 'authorized'],
-      default: 'pending',
-      index: true
+      enum: ["pending", "collected", "saved", "authorized"],
+      default: "pending",
+      index: true,
     },
     collectedAt: {
-      type: Date
+      type: Date,
     },
     collectedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
     savedAt: {
-      type: Date
+      type: Date,
     },
     savedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
     authorizedAt: {
-      type: Date
+      type: Date,
     },
     authorizedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
     // Cached service info for quick access
     serviceInfo: {
       name: String,
       code: String,
-      category: String
+      category: String,
     },
     // Test-specific metadata
     sampleType: {
       type: String,
-      default: 'Blood' // Blood, Urine, Stool, etc.
+      enum: SAMPLE_TYPES,
+      default: SAMPLE_TYPES.WHOLE_BLOOD,
     },
     containerType: {
       type: String,
-      default: 'Plain Tube' // Plain Tube, EDTA, Fluoride, etc.
+      enum: CONTAINER_TYPES,
+      default: CONTAINER_TYPES.PLAIN,
     },
     instructions: {
       type: String,
-      maxlength: 500
+      maxlength: 500,
     },
     technician: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
     machineUsed: {
       type: String,
-      maxlength: 100
+      maxlength: 100,
     },
     // Quality control flags
     hemolyzed: {
       type: Boolean,
-      default: false
+      default: false,
     },
     lipemic: {
       type: Boolean,
-      default: false
+      default: false,
     },
     icteric: {
       type: Boolean,
-      default: false
+      default: false,
     },
     remarks: {
       type: String,
-      maxlength: 1000
-    }
+      maxlength: 1000,
+    },
   },
-  { 
+  {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toObject: { virtuals: true },
   }
 );
 
 // Virtual for status display
-labOrderTestSchema.virtual('statusDisplay').get(function() {
+labOrderTestSchema.virtual("statusDisplay").get(function () {
   const statusMap = {
-    pending: 'Pending Collection',
-    collected: 'Sample Collected',
-    saved: 'Results Saved',
-    authorized: 'Authorized'
+    pending: "Pending Collection",
+    collected: "Sample Collected",
+    saved: "Results Saved",
+    authorized: "Authorized",
   };
   return statusMap[this.status] || this.status;
 });
 
 // Virtual for quality flags display
-labOrderTestSchema.virtual('qualityFlags').get(function() {
+labOrderTestSchema.virtual("qualityFlags").get(function () {
   const flags = [];
-  if (this.hemolyzed) flags.push('Hemolyzed');
-  if (this.lipemic) flags.push('Lipemic');
-  if (this.icteric) flags.push('Icteric');
-  return flags.join(', ') || 'Normal';
+  if (this.hemolyzed) flags.push("Hemolyzed");
+  if (this.lipemic) flags.push("Lipemic");
+  if (this.icteric) flags.push("Icteric");
+  return flags.join(", ") || "Normal";
 });
 
 // Pre-save middleware to update timestamps
 labOrderTestSchema.pre("save", function (next) {
-  if (this.isModified('status')) {
+  if (this.isModified("status")) {
     const now = new Date();
     switch (this.status) {
-      case 'collected':
+      case "collected":
         if (!this.collectedAt) this.collectedAt = now;
         break;
-      case 'saved':
+      case "saved":
         if (!this.savedAt) this.savedAt = now;
         break;
-      case 'authorized':
+      case "authorized":
         if (!this.authorizedAt) this.authorizedAt = now;
         break;
     }
@@ -133,35 +136,42 @@ labOrderTestSchema.pre("save", function (next) {
 });
 
 // Post-save middleware to update parent lab order status
-labOrderTestSchema.post("save", async function() {
-  if (this.isModified('status')) {
+labOrderTestSchema.post("save", async function () {
+  if (this.isModified("status")) {
     await updateLabOrderStatus(this.labOrderId);
   }
 });
 
 // Function to update lab order status based on test statuses
 async function updateLabOrderStatus(labOrderId) {
-  const LabOrder = mongoose.model('LabOrder');
-  const LabOrderTest = mongoose.model('LabOrderTest');
-  
+  const LabOrder = mongoose.model("LabOrder");
+  const LabOrderTest = mongoose.model("LabOrderTest");
+
   const tests = await LabOrderTest.find({ labOrderId });
   const labOrder = await LabOrder.findById(labOrderId);
-  
+
   if (!labOrder || !tests.length) return;
-  
-  const statuses = tests.map(test => test.status);
+
+  const statuses = tests.map((test) => test.status);
   let newStatus;
-  
-  if (statuses.every(status => status === 'authorized')) {
-    newStatus = 'authorized';
-  } else if (statuses.every(status => status === 'saved' || status === 'authorized')) {
-    newStatus = 'saved';
-  } else if (statuses.every(status => status === 'collected' || status === 'saved' || status === 'authorized')) {
-    newStatus = 'collected';
+
+  if (statuses.every((status) => status === "authorized")) {
+    newStatus = "authorized";
+  } else if (
+    statuses.every((status) => status === "saved" || status === "authorized")
+  ) {
+    newStatus = "saved";
+  } else if (
+    statuses.every(
+      (status) =>
+        status === "collected" || status === "saved" || status === "authorized"
+    )
+  ) {
+    newStatus = "collected";
   } else {
-    newStatus = 'pending';
+    newStatus = "pending";
   }
-  
+
   if (labOrder.status !== newStatus) {
     labOrder.status = newStatus;
     await labOrder.save();

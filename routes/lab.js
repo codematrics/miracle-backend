@@ -33,6 +33,39 @@ const {
 
 const router = express.Router();
 
+// Function to update lab order status based on test statuses
+async function updateLabOrderStatus(labOrderId) {
+  const tests = await LabOrderTest.find({ labOrderId });
+  const labOrder = await LabOrder.findById(labOrderId);
+
+  if (!labOrder || !tests.length) return;
+
+  const statuses = tests.map((test) => test.status);
+  let newStatus;
+
+  if (statuses.every((status) => status === "authorized")) {
+    newStatus = "authorized";
+  } else if (
+    statuses.every((status) => status === "saved" || status === "authorized")
+  ) {
+    newStatus = "saved";
+  } else if (
+    statuses.every(
+      (status) =>
+        status === "collected" || status === "saved" || status === "authorized"
+    )
+  ) {
+    newStatus = "collected";
+  } else {
+    newStatus = "pending";
+  }
+
+  if (labOrder.status !== newStatus) {
+    labOrder.status = newStatus;
+    await labOrder.save();
+  }
+}
+
 // Simple test route to verify lab routes work
 router.get("/test", (req, res) => {
   res.json({ success: true, message: "Lab routes are working!" });
@@ -63,6 +96,7 @@ router.get(
         from,
         to,
         all,
+        category, // Add category filter for pathology/radiology separation
       } = req.query;
 
       // Build individual query parts
@@ -91,78 +125,180 @@ router.get(
         searchQuery
       );
 
-      const result = await paginate(LabOrder, {
-        query: finalQuery,
-        page,
-        limit,
-        all: all === "true",
-        populate: [
+      // If category is specified, we need to join with LabOrderTest to filter by service category
+      let ordersQuery;
+
+      if (category) {
+        // Find orders that have tests in the specified category
+        const ordersWithCategoryTests = await LabOrder.aggregate([
+          { $match: finalQuery },
           {
-            path: "patientId",
-            select: "patientName uhid mobileNo age ageUnit gender",
+            $lookup: {
+              from: "labordertests",
+              localField: "_id",
+              foreignField: "labOrderId",
+              as: "tests",
+            },
           },
           {
-            path: "doctorId",
-            select: "username email",
+            $lookup: {
+              from: "services",
+              localField: "tests.serviceId",
+              foreignField: "_id",
+              as: "services",
+            },
           },
-        ],
-      });
+          {
+            $match: {
+              "services.category": category,
+            },
+          },
+          {
+            $lookup: {
+              from: "visits",
+              localField: "visitId",
+              foreignField: "_id",
+              as: "visit",
+            },
+          },
+          { $sort: { orderDate: -1 } },
+        ]);
 
-      // Get test counts for each order
-      const orderIds = result.data.map((order) => order._id);
-      const testCounts = await LabOrderTest.aggregate([
-        { $match: { labOrderId: { $in: orderIds } } },
-        { $group: { _id: "$labOrderId", totalTests: { $sum: 1 } } },
-      ]);
+        // Apply pagination if needed
+        const startIndex =
+          !all || all !== "true" ? (parseInt(page) - 1) * parseInt(limit) : 0;
+        const endIndex =
+          !all || all !== "true"
+            ? startIndex + parseInt(limit)
+            : ordersWithCategoryTests.length;
+        const paginatedOrders = ordersWithCategoryTests.slice(
+          startIndex,
+          endIndex
+        );
 
-      const testCountMap = testCounts.reduce((acc, item) => {
-        acc[item._id.toString()] = item.totalTests;
-        return acc;
-      }, {});
+        // Format each order as one row, with combined service info
+        const formattedOrders = await Promise.all(
+          paginatedOrders.map(async (order) => {
+            // Get tests for this order in the specified category
+            const categoryTests = await LabOrderTest.find({
+              labOrderId: order._id,
+            }).populate({
+              path: "serviceId",
+              match: { category: category },
+              select: "name code category reportName",
+            });
 
-      // Format data for response
-      const formattedOrders = result.data.map((order) => ({
-        id: order._id,
-        accessionNo: order.accessionNo,
-        formattedAccession: order.formattedAccession,
-        patientInfo: order.patientInfo,
-        doctorInfo: order.doctorInfo,
-        status: order.status,
-        statusDisplay: order.statusDisplay,
-        priority: order.priority,
-        orderDate: order.orderDate,
-        instructions: order.instructions,
-        totalTests: testCountMap[order._id.toString()] || 0,
-        collectedAt: order.collectedAt,
-        savedAt: order.savedAt,
-        authorizedAt: order.authorizedAt,
-        createdAt: order.createdAt,
-        updatedAt: order.updatedAt,
-        patient: order.patientId
-          ? {
-              id: order.patientId._id,
-              name: order.patientId.patientName,
-              uhid: order.patientId.uhid,
-              mobileNo: order.patientId.mobileNo,
-            }
-          : null,
-      }));
+            const validTests = categoryTests.filter((test) => test.serviceId);
 
-      const logMessage =
-        all === "true"
-          ? `Retrieved all ${result.data.length} lab orders`
-          : `Retrieved ${result.data.length} lab orders`;
+            // Combine service names and report names
+            const serviceNames = validTests
+              .map((t) => t.serviceId.name)
+              .join(", ");
+            const reportNames = validTests
+              .map((t) => t.serviceId.reportName || t.serviceId.name)
+              .join(", ");
 
-      console.log(
-        `[${new Date().toISOString()}] GET /api/lab/orders - SUCCESS 200 - ${logMessage}`
-      );
+            return {
+              id: order._id, // LabOrder ID (for popup)
+              accessionNo: order.accessionNo,
+              orderDate: order.orderDate,
+              reportName: reportNames,
+              serviceName: serviceNames,
+              consultantDoctor: order.doctorName,
+              referringDoctor: order.doctorName,
+              uhid: order.patientInfo?.uhid,
+              patientName: order.patientInfo?.name,
+              ageGender: `${order.patientInfo?.age}/${
+                order.patientInfo?.gender?.charAt(0) || ""
+              }`,
+              visitNo: order.visit?.[0]?.visitId || order.visitId || "",
+              status: order.status, // Overall order status
+              statusDisplay: order.statusDisplay,
+              priority: order.priority,
+              serviceCategory: category,
+              totalTests: validTests.length,
+              // Additional fields for popup
+              tests: validTests,
+            };
+          })
+        );
 
-      res.json({
-        success: true,
-        data: formattedOrders,
-        pagination: result.pagination,
-        total: result.total,
-      });
+        res.json({
+          success: true,
+          data: formattedOrders,
+          total: formattedOrders.length,
+        });
+      } else {
+        // Original logic for non-category filtered requests
+        const result = await paginate(LabOrder, {
+          query: finalQuery,
+          page,
+          limit,
+          all: all === "true",
+          populate: [
+            {
+              path: "patientId",
+              select: "patientName uhid mobileNo age ageUnit gender",
+            },
+          ],
+        });
+
+        // Get test counts for each order
+        const orderIds = result.data.map((order) => order._id);
+        const testCounts = await LabOrderTest.aggregate([
+          { $match: { labOrderId: { $in: orderIds } } },
+          { $group: { _id: "$labOrderId", totalTests: { $sum: 1 } } },
+        ]);
+
+        const testCountMap = testCounts.reduce((acc, item) => {
+          acc[item._id.toString()] = item.totalTests;
+          return acc;
+        }, {});
+
+        // Format data for response
+        const formattedOrders = result.data.map((order) => ({
+          id: order._id,
+          accessionNo: order.accessionNo,
+          formattedAccession: order.formattedAccession,
+          patientInfo: order.patientInfo,
+          doctorInfo: order.doctorInfo,
+          status: order.status,
+          statusDisplay: order.statusDisplay,
+          priority: order.priority,
+          orderDate: order.orderDate,
+          instructions: order.instructions,
+          totalTests: testCountMap[order._id.toString()] || 0,
+          collectedAt: order.collectedAt,
+          savedAt: order.savedAt,
+          authorizedAt: order.authorizedAt,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          patient: order.patientId
+            ? {
+                id: order.patientId._id,
+                name: order.patientId.patientName,
+                uhid: order.patientId.uhid,
+                mobileNo: order.patientId.mobileNo,
+              }
+            : null,
+        }));
+
+        const logMessage =
+          all === "true"
+            ? `Retrieved all ${formattedOrders.length} lab orders`
+            : `Retrieved ${formattedOrders.length} lab orders`;
+
+        console.log(
+          `[${new Date().toISOString()}] GET /api/lab/orders - SUCCESS 200 - ${logMessage}`
+        );
+
+        res.json({
+          success: true,
+          data: formattedOrders,
+          pagination: result.pagination,
+          total: result.total,
+        });
+      }
     } catch (error) {
       console.error(
         `[${new Date().toISOString()}] GET /api/lab/orders - ERROR 500:`,
@@ -528,7 +664,7 @@ router.get(
       `[${new Date().toISOString()}] GET /api/lab/collection - Request received`
     );
     try {
-      const { page, limit, search, priority, from, to } = req.query;
+      const { page, limit, search, priority, from, to, category } = req.query;
 
       // Only show orders with status pending or collected
       const statusQuery = { status: { $in: ["pending", "collected"] } };
@@ -548,55 +684,123 @@ router.get(
         searchQuery
       );
 
-      const result = await paginate(LabOrder, {
-        query: finalQuery,
-        page,
-        limit,
-        sort: { priority: 1, orderDate: 1 }, // Urgent first, then by order date
-      });
+      // Find orders that have tests in the specified category and appropriate status
+      let ordersQuery;
+      if (category) {
+        ordersQuery = await LabOrder.aggregate([
+          { $match: finalQuery },
+          {
+            $lookup: {
+              from: "labordertests",
+              localField: "_id",
+              foreignField: "labOrderId",
+              as: "tests",
+            },
+          },
+          {
+            $lookup: {
+              from: "services",
+              localField: "tests.serviceId",
+              foreignField: "_id",
+              as: "services",
+            },
+          },
+          {
+            $match: {
+              "services.category": category,
+            },
+          },
+          {
+            $lookup: {
+              from: "visits",
+              localField: "visitId",
+              foreignField: "_id",
+              as: "visit",
+            },
+          },
+          { $sort: { priority: 1, orderDate: 1 } },
+        ]);
+      } else {
+        ordersQuery = await LabOrder.find(finalQuery)
+          .sort({ priority: 1, orderDate: 1 })
+          .lean();
+      }
 
-      // Get associated tests for each order
-      const orderIds = result.data.map((order) => order._id);
-      const tests = await LabOrderTest.find({
-        labOrderId: { $in: orderIds },
-        status: { $in: ["pending", "collected"] },
-      })
-        .populate("serviceId", "name code category")
-        .lean();
+      // Apply pagination
+      const startIndex = (parseInt(page) - 1) * parseInt(limit);
+      const endIndex = startIndex + parseInt(limit);
+      const paginatedOrders = ordersQuery.slice(startIndex, endIndex);
 
-      // Group tests by order
-      const testsByOrder = tests.reduce((acc, test) => {
-        if (!acc[test.labOrderId]) acc[test.labOrderId] = [];
-        acc[test.labOrderId].push(test);
-        return acc;
-      }, {});
+      // Format data for response - one row per order
+      const formattedOrders = await Promise.all(
+        paginatedOrders.map(async (order) => {
+          // Get tests for this order in the specified category
+          const testsQuery = category
+            ? { labOrderId: order._id }
+            : { labOrderId: order._id };
 
-      // Format data for response
-      const formattedOrders = result.data.map((order) => ({
-        id: order._id,
-        accessionNo: order.accessionNo,
-        formattedAccession: order.formattedAccession,
-        patientInfo: order.patientInfo,
-        status: order.status,
-        statusDisplay: order.statusDisplay,
-        priority: order.priority,
-        orderDate: order.orderDate,
-        instructions: order.instructions,
-        tests: testsByOrder[order._id] || [],
-        createdAt: order.createdAt,
-      }));
+          const tests = await LabOrderTest.find(testsQuery).populate({
+            path: "serviceId",
+            select: "name code category reportName",
+            match: category ? { category: category } : {},
+          });
+
+          const validTests = tests.filter(
+            (test) =>
+              test.serviceId &&
+              (!category || test.serviceId.category === category)
+          );
+
+          // Get visit info if available
+          const visitInfo =
+            order.visitId || order.visit?.[0]
+              ? order.visit?.[0] ||
+                (await require("../models/Visit").findById(order.visitId))
+              : null;
+
+          // Combine service names and report names
+          const serviceNames = validTests
+            .map((t) => t.serviceId.name)
+            .join(", ");
+          const reportNames = validTests
+            .map((t) => t.serviceId.reportName || t.serviceId.name)
+            .join(", ");
+
+          return {
+            id: order._id, // LabOrder ID (for popup)
+            accessionNo: order.accessionNo,
+            orderDate: order.orderDate,
+            reportName: reportNames,
+            serviceName: serviceNames,
+            consultantDoctor: order.doctorName,
+            referringDoctor: order.doctorName,
+            uhid: order.patientInfo?.uhid,
+            patientName: order.patientInfo?.name,
+            ageGender: `${order.patientInfo?.age}/${
+              order.patientInfo?.gender?.charAt(0) || ""
+            }`,
+            visitNo: visitInfo?.visitId || order.visitId || "",
+            status: order.status, // Overall order status
+            statusDisplay: order.statusDisplay,
+            priority: order.priority,
+            serviceCategory: category,
+            totalTests: validTests.length,
+            tests: validTests, // Include tests for popup
+            createdAt: order.createdAt,
+          };
+        })
+      );
 
       console.log(
         `[${new Date().toISOString()}] GET /api/lab/collection - SUCCESS 200 - Retrieved ${
-          result.data.length
+          formattedOrders.length
         } collection orders`
       );
 
       res.json({
         success: true,
         data: formattedOrders,
-        pagination: result.pagination,
-        total: result.total,
+        total: formattedOrders.length,
       });
     } catch (error) {
       console.error(
@@ -613,6 +817,569 @@ router.get(
     }
   }
 );
+
+// GET /api/lab/orders/:orderId/details - Get Order Details with All Tests (for popup)
+router.get("/orders/:orderId/details", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] GET /api/lab/orders/${
+      req.params.orderId
+    }/details - Request received`
+  );
+  try {
+    const { orderId } = req.params;
+    const { category } = req.query;
+
+    // Get the lab order with patient and visit info
+    const labOrder = await LabOrder.findById(orderId)
+      .populate("patientId", "patientName uhid mobileNo age ageUnit gender")
+      .populate("visitId", "visitId");
+
+    if (!labOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Lab order not found",
+      });
+    }
+
+    // Get all tests for this order, optionally filtered by category
+    const tests = await LabOrderTest.find({ labOrderId: orderId }).populate({
+      path: "serviceId",
+      select: "name code category reportName",
+      match: category ? { category: category } : {},
+    });
+
+    // Filter out tests where serviceId population failed (wrong category)
+    const validTests = tests.filter((test) => test.serviceId);
+
+    // For each test, get its parameters and current results
+    const testsWithDetails = await Promise.all(
+      validTests.map(async (test) => {
+        // Get parameters for this service
+        const parameters = await ParameterMaster.find({
+          serviceId: test.serviceId._id,
+          isActive: true,
+        });
+        console.log(
+          await ParameterMaster.find({
+            serviceId: test.serviceId._id,
+            isActive: true,
+          }),
+          "got",
+          test.serviceId._id
+        );
+
+        // Get existing results
+        const results = await LabResult.find({
+          labOrderTestId: test._id,
+        }).populate("parameterId", "parameterName unit referenceRange");
+
+        // Create a map of results by parameter ID
+        const resultsByParameter = results.reduce((acc, result) => {
+          acc[result.parameterId._id.toString()] = result;
+          return acc;
+        }, {});
+
+        return {
+          testId: test._id,
+          reportName: test.serviceId.reportName || test.serviceId.name,
+          serviceName: test.serviceId.name,
+          serviceCode: test.serviceId.code,
+          category: test.serviceId.category,
+          sampleType: test.sampleType || "whole_blood",
+          containerType: test.containerType || "plain_tube",
+          status: test.status,
+          statusDisplay: test.statusDisplay,
+          collectedAt: test.collectedAt,
+          collectedBy: test.collectedBy,
+          savedAt: test.savedAt,
+          savedBy: test.savedBy,
+          authorizedAt: test.authorizedAt,
+          authorizedBy: test.authorizedBy,
+          // Quality control flags
+          qualityFlags: {
+            hemolyzed: test.hemolyzed || false,
+            lipemic: test.lipemic || false,
+            icteric: test.icteric || false,
+          },
+          // Additional test metadata
+          instructions: test.instructions,
+          technician: test.technician,
+          machineUsed: test.machineUsed,
+          remarks: test.remarks,
+          parameters: parameters.map((param) => ({
+            parameterId: param._id,
+            parameterName: param.parameterName,
+            parameterCode: param.parameterCode,
+            unit: param.unit,
+            referenceRange: param.referenceRange,
+            dataType: param.dataType,
+            methodology: param.methodology,
+            sortOrder: param.sortOrder,
+            // Include current result if exists
+            currentResult: resultsByParameter[param._id.toString()]
+              ? {
+                  id: resultsByParameter[param._id.toString()]._id,
+                  value: resultsByParameter[param._id.toString()].value,
+                  status: resultsByParameter[param._id.toString()].status,
+                  interpretation:
+                    resultsByParameter[param._id.toString()].interpretation,
+                  isCritical:
+                    resultsByParameter[param._id.toString()].isCritical,
+                  isAbnormal:
+                    resultsByParameter[param._id.toString()].isAbnormal,
+                  enteredAt: resultsByParameter[param._id.toString()].enteredAt,
+                  savedAt: resultsByParameter[param._id.toString()].savedAt,
+                  authorizedAt:
+                    resultsByParameter[param._id.toString()].authorizedAt,
+                }
+              : null,
+          })),
+        };
+      })
+    );
+
+    // Format the response
+    const orderDetails = {
+      id: labOrder._id,
+      accessionNo: labOrder.accessionNo,
+      orderDate: labOrder.orderDate,
+      consultantDoctor: labOrder.doctorName,
+      referringDoctor: labOrder.doctorName,
+      uhid: labOrder.patientInfo?.uhid,
+      patientName: labOrder.patientInfo?.name,
+      ageGender: `${labOrder.patientInfo?.age}/${
+        labOrder.patientInfo?.gender?.charAt(0) || ""
+      }`,
+      visitNo: labOrder.visitId?.visitId || labOrder.visitId || "",
+      status: labOrder.status,
+      statusDisplay: labOrder.statusDisplay,
+      priority: labOrder.priority,
+      instructions: labOrder.instructions,
+      tests: testsWithDetails,
+      totalTests: testsWithDetails.length,
+    };
+
+    console.log(
+      `[${new Date().toISOString()}] GET /api/lab/orders/${orderId}/details - SUCCESS 200 - Retrieved order details with ${
+        testsWithDetails.length
+      } tests`
+    );
+
+    res.json({
+      success: true,
+      data: orderDetails,
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] GET /api/lab/orders/${
+        req.params.orderId
+      }/details - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /api/lab/reports/:reportId - Get Report Details with Parameters (for popup)
+router.get("/reports/:reportId", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] GET /api/lab/reports/${
+      req.params.reportId
+    } - Request received`
+  );
+  try {
+    const { reportId } = req.params;
+
+    // Get the lab order test with all related data
+    const labOrderTest = await LabOrderTest.findById(reportId)
+      .populate({
+        path: "labOrderId",
+        select: "accessionNo patientInfo doctorName orderDate visitId priority",
+        populate: {
+          path: "visitId",
+          select: "visitId",
+        },
+      })
+      .populate("serviceId", "name code category reportName");
+
+    if (!labOrderTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Report not found",
+      });
+    }
+
+    // Get parameters for this service
+    const parameters = await ParameterMaster.find({
+      serviceId: labOrderTest.serviceId._id,
+      isActive: true,
+    }).sort({ sortOrder: 1 });
+
+    // Get existing results
+    const results = await LabResult.find({
+      labOrderTestId: reportId,
+    }).populate("parameterId", "parameterName unit referenceRange");
+
+    // Create a map of results by parameter ID for easy lookup
+    const resultsByParameter = results.reduce((acc, result) => {
+      acc[result.parameterId._id.toString()] = result;
+      return acc;
+    }, {});
+
+    // Format the response
+    const reportDetails = {
+      id: labOrderTest._id,
+      accessionNo: labOrderTest.labOrderId.accessionNo,
+      orderDate: labOrderTest.labOrderId.orderDate,
+      reportName:
+        labOrderTest.serviceId.reportName || labOrderTest.serviceId.name,
+      serviceName: labOrderTest.serviceId.name,
+      consultantDoctor: labOrderTest.labOrderId.doctorName,
+      referringDoctor: labOrderTest.labOrderId.doctorName,
+      uhid: labOrderTest.labOrderId.patientInfo?.uhid,
+      patientName: labOrderTest.labOrderId.patientInfo?.name,
+      ageGender: `${labOrderTest.labOrderId.patientInfo?.age}/${
+        labOrderTest.labOrderId.patientInfo?.gender?.charAt(0) || ""
+      }`,
+      visitNo: labOrderTest.labOrderId.visitId?.visitId || "",
+      status: labOrderTest.status,
+      statusDisplay: labOrderTest.statusDisplay,
+      priority: labOrderTest.labOrderId.priority,
+      parameters: parameters.map((param) => ({
+        parameterId: param._id,
+        parameterName: param.parameterName,
+        parameterCode: param.parameterCode,
+        unit: param.unit,
+        referenceRange: param.referenceRange,
+        dataType: param.dataType,
+        methodology: param.methodology,
+        sortOrder: param.sortOrder,
+        // Include current result if exists
+        currentResult: resultsByParameter[param._id.toString()]
+          ? {
+              id: resultsByParameter[param._id.toString()]._id,
+              value: resultsByParameter[param._id.toString()].value,
+              status: resultsByParameter[param._id.toString()].status,
+              interpretation:
+                resultsByParameter[param._id.toString()].interpretation,
+              isCritical: resultsByParameter[param._id.toString()].isCritical,
+              isAbnormal: resultsByParameter[param._id.toString()].isAbnormal,
+              enteredAt: resultsByParameter[param._id.toString()].enteredAt,
+              savedAt: resultsByParameter[param._id.toString()].savedAt,
+              authorizedAt:
+                resultsByParameter[param._id.toString()].authorizedAt,
+            }
+          : null,
+      })),
+    };
+
+    console.log(
+      `[${new Date().toISOString()}] GET /api/lab/reports/${reportId} - SUCCESS 200 - Retrieved report details`
+    );
+
+    res.json({
+      success: true,
+      data: reportDetails,
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] GET /api/lab/reports/${
+        req.params.reportId
+      } - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/lab/reports/update-test-details - Update Test Sample/Container Details
+router.post("/reports/update-test-details", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] POST /api/lab/reports/update-test-details - Request received`
+  );
+  try {
+    const { reportId, sampleType, containerType, instructions, updatedBy } =
+      req.body;
+
+    // Validate sample type and container type against enums
+    const { SAMPLE_TYPES, CONTAINER_TYPES } = require("../constants/enums");
+
+    const updateData = {};
+
+    if (sampleType && Object.values(SAMPLE_TYPES).includes(sampleType)) {
+      updateData.sampleType = sampleType;
+    }
+
+    if (
+      containerType &&
+      Object.values(CONTAINER_TYPES).includes(containerType)
+    ) {
+      updateData.containerType = containerType;
+    }
+
+    if (instructions !== undefined) {
+      updateData.instructions = instructions;
+    }
+
+    const updatedTest = await LabOrderTest.findByIdAndUpdate(
+      reportId,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found",
+      });
+    }
+
+    console.log(
+      `[${new Date().toISOString()}] POST /api/lab/reports/update-test-details - SUCCESS 200 - Updated test details for ${reportId}`
+    );
+
+    res.json({
+      success: true,
+      message: "Test details updated successfully",
+      data: {
+        reportId,
+        sampleType: updatedTest.sampleType,
+        containerType: updatedTest.containerType,
+        instructions: updatedTest.instructions,
+        updatedBy,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] POST /api/lab/reports/update-test-details - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/lab/reports/bulk-update-status - Update Multiple Reports Status (NEW)
+router.post("/reports/bulk-update-status", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] POST /api/lab/reports/bulk-update-status - Request received`
+  );
+  try {
+    const { reportIds, status, updatedBy, remarks } = req.body;
+
+    // Validate input
+    if (!reportIds || !Array.isArray(reportIds) || reportIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "reportIds array is required and must not be empty",
+        errors: [
+          {
+            field: "reportIds",
+            message: "Must be a non-empty array of report IDs",
+          },
+        ],
+      });
+    }
+
+    // Validate status
+    const validStatuses = ["pending", "collected", "saved", "authorized"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+        errors: [
+          {
+            field: "status",
+            message: "Status must be one of: " + validStatuses.join(", "),
+          },
+        ],
+      });
+    }
+
+    // Prepare update data
+    const updateData = { status };
+    const now = new Date();
+
+    switch (status) {
+      case "collected":
+        updateData.collectedAt = now;
+        updateData.collectedBy = updatedBy;
+        break;
+      case "saved":
+        updateData.savedAt = now;
+        updateData.savedBy = updatedBy;
+        break;
+      case "authorized":
+        updateData.authorizedAt = now;
+        updateData.authorizedBy = updatedBy;
+        break;
+    }
+
+    if (remarks) {
+      updateData.remarks = remarks;
+    }
+
+    // Update all tests in parallel
+    const updatePromises = reportIds.map((reportId) =>
+      LabOrderTest.findByIdAndUpdate(reportId, updateData, { new: true })
+    );
+
+    const updatedTests = await Promise.all(updatePromises);
+    const validTests = updatedTests.filter((test) => test !== null);
+
+    if (validTests.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No valid tests found for update",
+      });
+    }
+
+    // Update parent order status for each affected order
+    const affectedOrderIds = [...new Set(validTests.map(test => test.labOrderId))];
+    for (const labOrderId of affectedOrderIds) {
+      await updateLabOrderStatus(labOrderId);
+    }
+
+    // Check if any tests failed to update
+    const failedUpdates = reportIds.length - validTests.length;
+    const successMessage =
+      failedUpdates > 0
+        ? `Successfully updated ${validTests.length} tests to ${status}. ${failedUpdates} tests not found.`
+        : `Successfully updated ${validTests.length} tests to ${status}`;
+
+    console.log(
+      `[${new Date().toISOString()}] POST /api/lab/reports/bulk-update-status - SUCCESS 200 - Updated ${
+        validTests.length
+      }/${reportIds.length} tests to ${status}`
+    );
+
+    res.json({
+      success: true,
+      message: successMessage,
+      data: {
+        updatedCount: validTests.length,
+        failedCount: failedUpdates,
+        totalRequested: reportIds.length,
+        status,
+        statusDisplay: validTests[0]?.statusDisplay || status,
+        updatedBy,
+        updatedAt: now,
+        updatedTests: validTests.map((test) => ({
+          testId: test._id,
+          status: test.status,
+          statusDisplay: test.statusDisplay,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] POST /api/lab/reports/bulk-update-status - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/lab/reports/update-status - Update Report Status (Single test)
+router.post("/reports/update-status", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] POST /api/lab/reports/update-status - Request received`
+  );
+  try {
+    const { reportId, status, updatedBy, remarks } = req.body;
+
+    // Validate status
+    const validStatuses = ["pending", "collected", "saved", "authorized"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+        errors: [
+          {
+            field: "status",
+            message: "Status must be one of: " + validStatuses.join(", "),
+          },
+        ],
+      });
+    }
+
+    // Update the LabOrderTest status
+    const updateData = { status };
+    const now = new Date();
+
+    switch (status) {
+      case "collected":
+        updateData.collectedAt = now;
+        updateData.collectedBy = updatedBy;
+        break;
+      case "saved":
+        updateData.savedAt = now;
+        updateData.savedBy = updatedBy;
+        break;
+      case "authorized":
+        updateData.authorizedAt = now;
+        updateData.authorizedBy = updatedBy;
+        break;
+    }
+
+    if (remarks) {
+      updateData.remarks = remarks;
+    }
+
+    const updatedTest = await LabOrderTest.findByIdAndUpdate(
+      reportId,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Report not found",
+      });
+    }
+
+    // Update parent order status
+    await updateLabOrderStatus(updatedTest.labOrderId);
+
+    console.log(
+      `[${new Date().toISOString()}] POST /api/lab/reports/update-status - SUCCESS 200 - Updated report ${reportId} to ${status}`
+    );
+
+    res.json({
+      success: true,
+      message: `Report status updated to ${status}`,
+      data: {
+        reportId,
+        status,
+        statusDisplay: updatedTest.statusDisplay,
+        updatedBy,
+        updatedAt: now,
+      },
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] POST /api/lab/reports/update-status - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
 
 // POST /api/lab/collection/collect - Mark Samples as Collected
 router.post(
@@ -688,22 +1455,216 @@ router.post(
 // RESULT ENTRY WORKFLOW
 // =============================================================================
 
-// GET /api/lab/entry - Get Tests Ready for Result Entry
+// GET /api/lab/entry-orders - Get Orders Ready for Result Entry (Grouped by Order)
+router.get("/entry-orders", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] GET /api/lab/entry-orders - Request received`
+  );
+  try {
+    const { page = 1, limit = 10, search, priority, category } = req.query;
+
+    // Build aggregation pipeline to get orders with collected tests
+    let pipeline = [
+      // Match collected tests
+      { $match: { status: "collected" } },
+
+      // Lookup order details
+      {
+        $lookup: {
+          from: "laborders",
+          localField: "labOrderId",
+          foreignField: "_id",
+          as: "labOrder",
+        },
+      },
+      { $unwind: "$labOrder" },
+
+      // Lookup service details
+      {
+        $lookup: {
+          from: "services",
+          localField: "serviceId",
+          foreignField: "_id",
+          as: "service",
+        },
+      },
+      { $unwind: "$service" },
+
+      // Filter by category if specified
+      ...(category ? [{ $match: { "service.category": category } }] : []),
+
+      // Filter by priority if specified
+      ...(priority ? [{ $match: { "labOrder.priority": priority } }] : []),
+
+      // Search filter
+      ...(search
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "labOrder.accessionNo": { $regex: search, $options: "i" } },
+                  {
+                    "labOrder.patientInfo.name": {
+                      $regex: search,
+                      $options: "i",
+                    },
+                  },
+                  {
+                    "labOrder.patientInfo.uhid": {
+                      $regex: search,
+                      $options: "i",
+                    },
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
+
+      // Group by lab order (accession number)
+      {
+        $group: {
+          _id: "$labOrderId",
+          orderId: { $first: "$labOrderId" },
+          accessionNo: { $first: "$labOrder.accessionNo" },
+          orderDate: { $first: "$labOrder.orderDate" },
+          patientInfo: { $first: "$labOrder.patientInfo" },
+          doctorName: { $first: "$labOrder.doctorName" },
+          priority: { $first: "$labOrder.priority" },
+          visitId: { $first: "$labOrder.visitId" },
+          // Collect all tests for this order
+          tests: {
+            $push: {
+              testId: "$_id",
+              serviceName: "$service.name",
+              reportName: { $ifNull: ["$service.reportName", "$service.name"] },
+              serviceCode: "$service.code",
+              category: "$service.category",
+              status: "$status",
+              collectedAt: "$collectedAt",
+              sampleType: "$sampleType",
+              containerType: "$containerType",
+            },
+          },
+          totalTests: { $sum: 1 },
+          // Combine service and report names
+          serviceNames: { $addToSet: "$service.name" },
+          reportNames: {
+            $addToSet: { $ifNull: ["$service.reportName", "$service.name"] },
+          },
+        },
+      },
+
+      // Add visit info
+      {
+        $lookup: {
+          from: "visits",
+          localField: "visitId",
+          foreignField: "_id",
+          as: "visit",
+        },
+      },
+
+      // Format the output
+      {
+        $project: {
+          id: "$orderId",
+          accessionNo: 1,
+          orderDate: 1,
+          reportName: {
+            $reduce: {
+              input: "$reportNames",
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  { $cond: [{ $eq: ["$$value", ""] }, "", ", "] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          serviceName: {
+            $reduce: {
+              input: "$serviceNames",
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  { $cond: [{ $eq: ["$$value", ""] }, "", ", "] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          consultantDoctor: "$doctorName",
+          referringDoctor: "$doctorName",
+          uhid: "$patientInfo.uhid",
+          patientName: "$patientInfo.name",
+          ageGender: {
+            $concat: [
+              { $toString: "$patientInfo.age" },
+              "/",
+              { $substr: ["$patientInfo.gender", 0, 1] },
+            ],
+          },
+          visitNo: { $ifNull: [{ $arrayElemAt: ["$visit.visitId", 0] }, ""] },
+          status: "collected",
+          priority: 1,
+          totalTests: 1,
+          tests: 1,
+        },
+      },
+
+      // Sort by order date (newest first)
+      { $sort: { orderDate: -1 } },
+
+      // Pagination
+      { $skip: (parseInt(page) - 1) * parseInt(limit) },
+      { $limit: parseInt(limit) },
+    ];
+
+    const orders = await LabOrderTest.aggregate(pipeline);
+
+    console.log(
+      `[${new Date().toISOString()}] GET /api/lab/entry-orders - SUCCESS 200 - Retrieved ${
+        orders.length
+      } orders for entry`
+    );
+
+    res.json({
+      success: true,
+      data: orders,
+      total: orders.length,
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] GET /api/lab/entry-orders - ERROR 500:`,
+      { message: error.message, stack: error.stack }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /api/lab/entry - Get Tests Ready for Result Entry (Individual Tests)
 router.get("/entry", async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] GET /api/lab/entry - Request received`
   );
   try {
-    const { page = 1, limit = 10, search, priority } = req.query;
+    const { page = 1, limit = 10, search, priority, category } = req.query;
 
-    // Find collected tests that need result entry
-    const query = { status: "collected" };
-    if (priority) query.priority = priority;
+    // Find collected tests that need result entry, with category filtering
+    let testQuery = { status: "collected" };
+    if (priority) testQuery.priority = priority;
 
-    const tests = await LabOrderTest.find(query)
+    let tests = await LabOrderTest.find(testQuery)
       .populate({
         path: "labOrderId",
-        select: "accessionNo patientInfo priority orderDate",
+        select: "accessionNo patientInfo priority orderDate visitId doctorName",
         match: search
           ? {
               $or: [
@@ -714,17 +1675,28 @@ router.get("/entry", async (req, res) => {
             }
           : {},
       })
-      .populate("serviceId", "name code category")
+      .populate("serviceId", "name code category reportName")
       .sort({ "labOrderId.priority": 1, createdAt: 1 })
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
     // Filter out tests where labOrderId didn't match search criteria
-    const filteredTests = tests.filter((test) => test.labOrderId !== null);
+    tests = tests.filter((test) => test.labOrderId !== null);
 
-    // Get parameters for each test
-    const testsWithParameters = await Promise.all(
-      filteredTests.map(async (test) => {
+    // Filter by category if specified
+    if (category) {
+      tests = tests.filter((test) => test.serviceId?.category === category);
+    }
+
+    // Format tests for 3-page workflow
+    const formattedTests = await Promise.all(
+      tests.map(async (test) => {
+        // Get visit info if available
+        const visitInfo = test.labOrderId?.visitId
+          ? await require("../models/Visit").findById(test.labOrderId.visitId)
+          : null;
+
+        // Get parameters for this test
         const parameters = await ParameterMaster.find({
           serviceId: test.serviceId._id,
           isActive: true,
@@ -736,23 +1708,40 @@ router.get("/entry", async (req, res) => {
         }).populate("parameterId");
 
         return {
-          ...test.toJSON(),
+          id: test._id,
+          labOrderId: test.labOrderId._id,
+          accessionNo: test.labOrderId.accessionNo,
+          orderDate: test.labOrderId.orderDate,
+          reportName: test.serviceId?.reportName || test.serviceId?.name,
+          serviceName: test.serviceId?.name,
+          consultantDoctor: test.labOrderId.doctorName,
+          referringDoctor: test.labOrderId.doctorName,
+          uhid: test.labOrderId.patientInfo?.uhid,
+          patientName: test.labOrderId.patientInfo?.name,
+          ageGender: `${test.labOrderId.patientInfo?.age}/${
+            test.labOrderId.patientInfo?.gender?.charAt(0) || ""
+          }`,
+          visitNo: visitInfo?.visitId || test.labOrderId.visitId || "",
+          status: test.status,
+          statusDisplay: test.statusDisplay,
+          priority: test.labOrderId.priority,
           parameters,
           results,
+          testData: test,
         };
       })
     );
 
     console.log(
       `[${new Date().toISOString()}] GET /api/lab/entry - SUCCESS 200 - Retrieved ${
-        testsWithParameters.length
+        formattedTests.length
       } tests for entry`
     );
 
     res.json({
       success: true,
-      data: testsWithParameters,
-      total: testsWithParameters.length,
+      data: formattedTests,
+      total: formattedTests.length,
     });
   } catch (error) {
     console.error(
@@ -868,6 +1857,19 @@ router.post("/entry/save", validate(saveResultsSchema), async (req, res) => {
       })
     );
 
+    // Update the LabOrderTest status to "saved" after all parameters are saved
+    const updatedTest = await LabOrderTest.findByIdAndUpdate(labOrderTestId, {
+      status: "saved",
+      savedBy: enteredBy,
+      savedAt: new Date(),
+      ...(technician && { technician }),
+    }, { new: true });
+
+    // Update parent order status
+    if (updatedTest) {
+      await updateLabOrderStatus(updatedTest.labOrderId);
+    }
+
     console.log(
       `[${new Date().toISOString()}] POST /api/lab/entry/save - SUCCESS 200 - Saved ${
         savedResults.length
@@ -899,23 +1901,20 @@ router.post("/entry/save", validate(saveResultsSchema), async (req, res) => {
 // AUTHORIZATION WORKFLOW
 // =============================================================================
 
-// GET /api/lab/authorization - Get Saved Results Ready for Authorization
+// GET /api/lab/authorization - Get Orders Ready for Authorization (Grouped by Order)
 router.get("/authorization", async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] GET /api/lab/authorization - Request received`
   );
   try {
-    const { page = 1, limit = 10, search, priority, isCritical } = req.query;
+    const { page = 1, limit = 10, search, priority, category } = req.query;
 
-    // Build query for saved tests
-    let matchQuery = { status: "saved" };
-    if (priority) matchQuery["labOrderId.priority"] = priority;
-    if (isCritical === "true") matchQuery.isCritical = true;
+    // Build aggregation pipeline to get orders with saved tests
+    let pipeline = [
+      // Match saved tests
+      { $match: { status: "saved" } },
 
-    const tests = await LabOrderTest.aggregate([
-      {
-        $match: matchQuery,
-      },
+      // Lookup order details
       {
         $lookup: {
           from: "laborders",
@@ -924,9 +1923,9 @@ router.get("/authorization", async (req, res) => {
           as: "labOrder",
         },
       },
-      {
-        $unwind: "$labOrder",
-      },
+      { $unwind: "$labOrder" },
+
+      // Lookup service details
       {
         $lookup: {
           from: "services",
@@ -935,59 +1934,154 @@ router.get("/authorization", async (req, res) => {
           as: "service",
         },
       },
+      { $unwind: "$service" },
+
+      // Filter by category if specified
+      ...(category ? [{ $match: { "service.category": category } }] : []),
+
+      // Filter by priority if specified
+      ...(priority ? [{ $match: { "labOrder.priority": priority } }] : []),
+
+      // Search filter
+      ...(search
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "labOrder.accessionNo": { $regex: search, $options: "i" } },
+                  {
+                    "labOrder.patientInfo.name": {
+                      $regex: search,
+                      $options: "i",
+                    },
+                  },
+                  {
+                    "labOrder.patientInfo.uhid": {
+                      $regex: search,
+                      $options: "i",
+                    },
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
+
+      // Group by lab order (accession number)
       {
-        $unwind: "$service",
-      },
-      {
-        $lookup: {
-          from: "labresults",
-          localField: "_id",
-          foreignField: "labOrderTestId",
-          as: "results",
+        $group: {
+          _id: "$labOrderId",
+          orderId: { $first: "$labOrderId" },
+          accessionNo: { $first: "$labOrder.accessionNo" },
+          orderDate: { $first: "$labOrder.orderDate" },
+          patientInfo: { $first: "$labOrder.patientInfo" },
+          doctorName: { $first: "$labOrder.doctorName" },
+          priority: { $first: "$labOrder.priority" },
+          visitId: { $first: "$labOrder.visitId" },
+          // Collect all tests for this order
+          tests: {
+            $push: {
+              testId: "$_id",
+              serviceName: "$service.name",
+              reportName: { $ifNull: ["$service.reportName", "$service.name"] },
+              serviceCode: "$service.code",
+              category: "$service.category",
+              status: "$status",
+              savedAt: "$savedAt",
+              sampleType: "$sampleType",
+              containerType: "$containerType",
+            },
+          },
+          totalTests: { $sum: 1 },
+          // Combine service and report names
+          serviceNames: { $addToSet: "$service.name" },
+          reportNames: {
+            $addToSet: { $ifNull: ["$service.reportName", "$service.name"] },
+          },
         },
       },
+
+      // Add visit info
       {
-        $match: search
-          ? {
-              $or: [
-                {
-                  "labOrder.patientInfo.name": {
-                    $regex: search,
-                    $options: "i",
-                  },
-                },
-                {
-                  "labOrder.patientInfo.uhid": {
-                    $regex: search,
-                    $options: "i",
-                  },
-                },
-                { "labOrder.accessionNo": { $regex: search, $options: "i" } },
-              ],
-            }
-          : {},
+        $lookup: {
+          from: "visits",
+          localField: "visitId",
+          foreignField: "_id",
+          as: "visit",
+        },
       },
+
+      // Format the output
       {
-        $sort: { "labOrder.priority": 1, createdAt: 1 },
+        $project: {
+          id: "$orderId",
+          accessionNo: 1,
+          orderDate: 1,
+          reportName: {
+            $reduce: {
+              input: "$reportNames",
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  { $cond: [{ $eq: ["$$value", ""] }, "", ", "] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          serviceName: {
+            $reduce: {
+              input: "$serviceNames",
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  { $cond: [{ $eq: ["$$value", ""] }, "", ", "] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          consultantDoctor: "$doctorName",
+          referringDoctor: "$doctorName",
+          uhid: "$patientInfo.uhid",
+          patientName: "$patientInfo.name",
+          ageGender: {
+            $concat: [
+              { $toString: "$patientInfo.age" },
+              "/",
+              { $substr: ["$patientInfo.gender", 0, 1] },
+            ],
+          },
+          visitNo: { $ifNull: [{ $arrayElemAt: ["$visit.visitId", 0] }, ""] },
+          status: "saved",
+          priority: 1,
+          totalTests: 1,
+          tests: 1,
+        },
       },
-      {
-        $skip: (parseInt(page) - 1) * parseInt(limit),
-      },
-      {
-        $limit: parseInt(limit),
-      },
-    ]);
+
+      // Sort by priority and order date
+      { $sort: { priority: 1, orderDate: -1 } },
+
+      // Pagination
+      { $skip: (parseInt(page) - 1) * parseInt(limit) },
+      { $limit: parseInt(limit) },
+    ];
+
+    const orders = await LabOrderTest.aggregate(pipeline);
 
     console.log(
       `[${new Date().toISOString()}] GET /api/lab/authorization - SUCCESS 200 - Retrieved ${
-        tests.length
-      } tests for authorization`
+        orders.length
+      } orders for authorization`
     );
 
     res.json({
       success: true,
-      data: tests,
-      total: tests.length,
+      data: orders,
+      total: orders.length,
     });
   } catch (error) {
     console.error(
@@ -995,6 +2089,143 @@ router.get("/authorization", async (req, res) => {
       {
         message: error.message,
         stack: error.stack,
+      }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/lab/authorization/update-and-authorize - Update Parameter Values and Authorize
+router.post("/authorization/update-and-authorize", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] POST /api/lab/authorization/update-and-authorize - Request received`
+  );
+  try {
+    const { labOrderTestId, results, authorizedBy, clinicalRemarks } = req.body;
+
+    // Validate lab order test exists
+    const labOrderTest = await LabOrderTest.findById(labOrderTestId);
+    if (!labOrderTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Lab order test not found",
+      });
+    }
+
+    // Get patient info for interpretation
+    const labOrder = await LabOrder.findById(labOrderTest.labOrderId);
+    const patientGender = labOrder?.patientInfo?.gender;
+    const patientAge = parseInt(labOrder?.patientInfo?.age) || 0;
+
+    // Update and authorize each result
+    const authorizedResults = await Promise.all(
+      results.map(async (resultData) => {
+        const {
+          parameterId,
+          value,
+          technicalRemarks,
+          instrumentUsed,
+          methodUsed,
+          dilutionFactor,
+          flags,
+        } = resultData;
+
+        // Get parameter details for interpretation
+        const parameter = await ParameterMaster.findById(parameterId);
+        if (!parameter) {
+          throw new Error(`Parameter not found: ${parameterId}`);
+        }
+
+        // Find existing result
+        let labResult = await LabResult.findOne({
+          labOrderTestId,
+          parameterId,
+        });
+
+        if (labResult) {
+          // Update existing result
+          labResult.value = value;
+          labResult.status = "authorized";
+          labResult.authorizedBy = authorizedBy;
+          labResult.authorizedAt = new Date();
+          if (technicalRemarks) labResult.technicalRemarks = technicalRemarks;
+          if (instrumentUsed) labResult.instrumentUsed = instrumentUsed;
+          if (methodUsed) labResult.methodUsed = methodUsed;
+          if (dilutionFactor) labResult.dilutionFactor = dilutionFactor;
+          if (flags) labResult.flags = { ...labResult.flags, ...flags };
+          if (clinicalRemarks) labResult.clinicalRemarks = clinicalRemarks;
+        } else {
+          // Create new result (shouldn't happen in normal flow, but handle it)
+          labResult = new LabResult({
+            labOrderTestId,
+            parameterId,
+            value,
+            unit: parameter.unit,
+            referenceRange: parameter.getRange
+              ? parameter.getRange(patientGender, patientAge)
+              : parameter.referenceRange,
+            status: "authorized",
+            enteredBy: authorizedBy,
+            savedBy: authorizedBy,
+            savedAt: new Date(),
+            authorizedBy,
+            authorizedAt: new Date(),
+            technicalRemarks,
+            instrumentUsed,
+            methodUsed,
+            dilutionFactor,
+            flags,
+            clinicalRemarks,
+            parameterInfo: {
+              name: parameter.parameterName,
+              code: parameter.parameterCode,
+              dataType: parameter.dataType,
+              methodology: parameter.methodology,
+            },
+          });
+        }
+
+        // Interpret the result
+        labResult.interpretResult(parameter, patientGender, patientAge);
+
+        await labResult.save();
+        return labResult;
+      })
+    );
+
+    // Update the LabOrderTest status to "authorized"
+    const updatedTest = await LabOrderTest.findByIdAndUpdate(labOrderTestId, {
+      status: "authorized",
+      authorizedBy: authorizedBy,
+      authorizedAt: new Date(),
+    }, { new: true });
+
+    // Update parent order status
+    if (updatedTest) {
+      await updateLabOrderStatus(updatedTest.labOrderId);
+    }
+
+    console.log(
+      `[${new Date().toISOString()}] POST /api/lab/authorization/update-and-authorize - SUCCESS 200 - Updated and authorized ${
+        authorizedResults.length
+      } results`
+    );
+
+    res.json({
+      success: true,
+      message: `Successfully updated and authorized ${authorizedResults.length} test results`,
+      data: authorizedResults,
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] POST /api/lab/authorization/update-and-authorize - ERROR 500:`,
+      {
+        message: error.message,
+        stack: error.stack,
+        requestBody: req.body,
       }
     );
     res.status(500).json({
@@ -1043,6 +2274,28 @@ router.post(
           success: false,
           message: "No valid results found for authorization",
         });
+      }
+
+      // Update LabOrderTest status for affected tests
+      const affectedTestIds = [...new Set(validResults.map(result => result.labOrderTestId))];
+      for (const testId of affectedTestIds) {
+        // Check if all results for this test are now authorized
+        const allResultsForTest = await LabResult.find({ labOrderTestId: testId });
+        const allAuthorized = allResultsForTest.every(result => result.status === "authorized");
+        
+        if (allAuthorized) {
+          // Update the test status to authorized
+          const updatedTest = await LabOrderTest.findByIdAndUpdate(testId, {
+            status: "authorized",
+            authorizedBy,
+            authorizedAt: new Date(),
+          }, { new: true });
+          
+          // Update parent order status
+          if (updatedTest) {
+            await updateLabOrderStatus(updatedTest.labOrderId);
+          }
+        }
       }
 
       console.log(

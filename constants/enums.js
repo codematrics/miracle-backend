@@ -146,6 +146,42 @@ const PARAMETER_DATATYPE_ENUM = {
   select: "select",
 };
 
+const SAMPLE_TYPES = {
+  WHOLE_BLOOD: "whole_blood",
+  SERUM: "serum",
+  PLASMA: "plasma",
+  URINE: "urine",
+  STOOL: "stool",
+  SPUTUM: "sputum",
+  SWAB: "swab",
+  CSF: "csf",
+  PLEURAL_FLUID: "pleural_fluid",
+  ASCITIC_FLUID: "ascitic_fluid",
+  SYNOVIAL_FLUID: "synovial_fluid",
+  PERICARDIAL_FLUID: "pericardial_fluid",
+  BONE_MARROW: "bone_marrow",
+  TISSUE: "tissue",
+  SEMEN: "semen",
+  OTHER: "other",
+};
+
+const CONTAINER_TYPES = {
+  EDTA: "edta_tube", // Lavender top
+  SODIUM_CITRATE: "sodium_citrate_tube", // Light Blue top
+  PLAIN: "plain_tube", // Red top
+  SST: "sst_gel_tube", // Yellow top
+  HEPARIN: "heparin_tube", // Green top
+  FLUORIDE: "fluoride_tube", // Gray top
+  ESR: "esr_black_tube", // Black top
+  TRACE_ELEMENT: "trace_element_tube", // Royal Blue
+  URINE_CONTAINER: "urine_container",
+  STOOL_CONTAINER: "stool_container",
+  CULTURE_BOTTLE: "culture_bottle",
+  CSF_VIAL: "csf_vial",
+  HISTOLOGY_JAR: "formalin_jar",
+  OTHER: "other",
+};
+
 module.exports = {
   RELATION_TYPES,
   AGE_UNITS,
@@ -166,6 +202,8 @@ module.exports = {
   PARAMETER_DATATYPE_ENUM,
   PAYMENT_MODES,
   ORDER_STATUS,
+  SAMPLE_TYPES,
+  CONTAINER_TYPES,
   getEnumValues,
   getEnumKeys,
 };
