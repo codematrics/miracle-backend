@@ -38,10 +38,10 @@ const createVisitSchema = z.object({
     .max(100, "Referred by too long")
     .trim(),
   
-  visitingdoctor: z
+  doctorId: z
     .string()
-    .min(1, "Visiting doctor is required")
-    .max(100, "Visiting doctor too long")
+    .min(1, "Doctor ID is required")
+    .max(20, "Doctor ID too long")
     .trim(),
   
   visittype: z
