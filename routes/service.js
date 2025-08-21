@@ -6,6 +6,11 @@ const {
   updateServiceSchema,
   serviceQuerySchema,
 } = require("../validations/serviceSchema");
+const {
+  paginate,
+  buildSearchQuery,
+  combineQueries,
+} = require("../lib/pagination");
 
 const router = express.Router();
 
@@ -17,100 +22,56 @@ router.get("/", validate(serviceQuerySchema, "query"), async (req, res) => {
   try {
     const { page, limit, search, category, status, all } = req.query;
 
-    let query = {};
-    
-    // Text search in name and description
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-        { code: { $regex: search, $options: "i" } },
-        // Backward compatibility
-        { serviceName: { $regex: search, $options: "i" } },
-        { serviceCode: { $regex: search, $options: "i" } },
-      ];
-    }
-    
-    // Category filter
-    if (category) {
-      query.category = category;
-    }
-    
-    // Status filter
-    if (status) {
-      query.status = status;
-    }
+    // Build individual query parts
+    const categoryQuery = category ? { category } : {};
+    const statusQuery = status ? { status } : {};
+    const searchQuery = buildSearchQuery(search, [
+      "name",
+      "description",
+      "code",
+      "serviceName", // Backward compatibility
+      "serviceCode", // Backward compatibility
+    ]);
 
-    let services;
-    let total;
+    // Combine all queries
+    const finalQuery = combineQueries(categoryQuery, statusQuery, searchQuery);
 
-    if (all === 'true') {
-      // Get all services without pagination
-      services = await Service.find(query).sort({ createdAt: -1 });
-      total = services.length;
+    const result = await paginate(Service, {
+      query: finalQuery,
+      page,
+      limit,
+      all: all === "true",
+    });
 
-      // Format data for response
-      const formattedServices = services.map(service => ({
-        id: service._id,
-        name: service.name,
-        code: service.code,
-        description: service.description,
-        category: service.category,
-        rate: service.rate,
-        status: service.status,
-        createdAt: service.createdAt,
-        updatedAt: service.updatedAt
-      }));
+    // Format data for response
+    const formattedServices = result.data.map((service) => ({
+      id: service._id,
+      name: service.name,
+      code: service.code,
+      description: service.description,
+      category: service.category,
+      rate: service.rate,
+      status: service.status,
+      createdAt: service.createdAt,
+      updatedAt: service.updatedAt,
+      reportName: service?.reportName || null,
+    }));
 
-      console.log(
-        `[${new Date().toISOString()}] GET /api/services - SUCCESS 200 - Retrieved all ${
-          services.length
-        } services`
-      );
-      res.json({
-        success: true,
-        data: formattedServices,
-        total,
-      });
-    } else {
-      // Get services with pagination
-      services = await Service.find(query)
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .sort({ createdAt: -1 });
+    const logMessage =
+      all === "true"
+        ? `Retrieved all ${result.data.length} services`
+        : `Retrieved ${result.data.length} services`;
 
-      total = await Service.countDocuments(query);
+    console.log(
+      `[${new Date().toISOString()}] GET /api/services - SUCCESS 200 - ${logMessage}`
+    );
 
-      // Format data for response
-      const formattedServices = services.map(service => ({
-        id: service._id,
-        name: service.name,
-        code: service.code,
-        description: service.description,
-        category: service.category,
-        rate: service.rate,
-        status: service.status,
-        createdAt: service.createdAt,
-        updatedAt: service.updatedAt
-      }));
-
-      console.log(
-        `[${new Date().toISOString()}] GET /api/services - SUCCESS 200 - Retrieved ${
-          services.length
-        } services`
-      );
-      res.json({
-        success: true,
-        data: formattedServices,
-        pagination: {
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          total: total,
-          limit: limit
-        },
-        total,
-      });
-    }
+    res.json({
+      success: true,
+      data: formattedServices,
+      pagination: result.pagination,
+      total: result.total,
+    });
   } catch (error) {
     console.error(
       `[${new Date().toISOString()}] GET /api/services - ERROR 500:`,
@@ -164,7 +125,7 @@ router.get("/:id", async (req, res) => {
         rate: service.rate,
         status: service.status,
         createdAt: service.createdAt,
-        updatedAt: service.updatedAt
+        updatedAt: service.updatedAt,
       },
     });
   } catch (error) {
@@ -193,20 +154,24 @@ router.post("/", validate(createServiceSchema), async (req, res) => {
   try {
     // Check if service with same code exists
     const existingService = await Service.findOne({
-      code: req.body.code
+      code: req.body.code,
     });
 
     if (existingService) {
       console.warn(
-        `[${new Date().toISOString()}] POST /api/services - ERROR 400 - Service already exists with code: ${req.body.code}`
+        `[${new Date().toISOString()}] POST /api/services - ERROR 400 - Service already exists with code: ${
+          req.body.code
+        }`
       );
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors: [{
-          field: "code",
-          message: "Service code already exists"
-        }]
+        errors: [
+          {
+            field: "code",
+            message: "Service code already exists",
+          },
+        ],
       });
     }
 
@@ -229,8 +194,9 @@ router.post("/", validate(createServiceSchema), async (req, res) => {
         category: service.category,
         rate: service.rate,
         status: service.status,
+        reportName: service.reportName, // ✅ include reportName
         createdAt: service.createdAt,
-        updatedAt: service.updatedAt
+        updatedAt: service.updatedAt,
       },
     });
   } catch (error) {
@@ -242,20 +208,20 @@ router.post("/", validate(createServiceSchema), async (req, res) => {
         requestBody: req.body,
       }
     );
-    
+
     // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => ({
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => ({
         field: err.path,
-        message: err.message
+        message: err.message,
       }));
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors
+        errors,
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -289,7 +255,7 @@ router.put("/:id", validate(updateServiceSchema), async (req, res) => {
     if (req.body.code && req.body.code !== existingService.code) {
       const duplicateService = await Service.findOne({
         code: req.body.code,
-        _id: { $ne: req.params.id }
+        _id: { $ne: req.params.id },
       });
 
       if (duplicateService) {
@@ -301,19 +267,20 @@ router.put("/:id", validate(updateServiceSchema), async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Validation failed",
-          errors: [{
-            field: "code",
-            message: "Service code already exists"
-          }]
+          errors: [
+            {
+              field: "code",
+              message: "Service code already exists",
+            },
+          ],
         });
       }
     }
 
-    const service = await Service.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const service = await Service.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
     console.log(
       `[${new Date().toISOString()}] PUT /api/services/${
@@ -332,7 +299,7 @@ router.put("/:id", validate(updateServiceSchema), async (req, res) => {
         rate: service.rate,
         status: service.status,
         createdAt: service.createdAt,
-        updatedAt: service.updatedAt
+        updatedAt: service.updatedAt,
       },
     });
   } catch (error) {
@@ -347,20 +314,20 @@ router.put("/:id", validate(updateServiceSchema), async (req, res) => {
         requestBody: req.body,
       }
     );
-    
+
     // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => ({
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => ({
         field: err.path,
-        message: err.message
+        message: err.message,
       }));
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors
+        errors,
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Internal server error",

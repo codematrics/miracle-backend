@@ -2,12 +2,15 @@ const express = require("express");
 const Visit = require("../models/Visit");
 const Patient = require("../models/Patient");
 const Service = require("../models/Service");
+const LabOrder = require("../models/LabOrder");
+const { ORDER_STATUS } = require("../constants/enums");
 const { validate } = require("../middleware/validation");
 const {
   createVisitSchema,
   updateVisitSchema,
   visitQuerySchema,
 } = require("../validations/visitSchema");
+const { paginate, buildSearchQuery, buildDateRangeQuery, combineQueries } = require("../lib/pagination");
 
 const router = express.Router();
 
@@ -19,45 +22,32 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
   try {
     const { page, limit, search, status, patientId, from, to } = req.query;
 
-    let query = {};
+    // Build individual query parts
+    const statusQuery = status ? { status } : {};
+    const patientQuery = patientId ? { patientId } : {};
+    const dateQuery = buildDateRangeQuery('visitDate', from, to);
+    const searchQuery = buildSearchQuery(search, [
+      'visitId',
+      'refby',
+      'visitingdoctor',
+      'visittype'
+    ]);
 
-    // Status filter
-    if (status) {
-      query.status = status;
-    }
+    // Combine all queries
+    const finalQuery = combineQueries(statusQuery, patientQuery, dateQuery, searchQuery);
 
-    // Patient filter
-    if (patientId) {
-      query.patientId = patientId;
-    }
-
-    // Date range filter
-    if (from || to) {
-      query.visitDate = {};
-      if (from) query.visitDate.$gte = new Date(from);
-      if (to) query.visitDate.$lte = new Date(to);
-    }
-
-    // Text search in visit ID, patient info, doctor, etc.
-    if (search) {
-      query.$or = [
-        { visitId: { $regex: search, $options: "i" } },
-        { refby: { $regex: search, $options: "i" } },
-        { visitingdoctor: { $regex: search, $options: "i" } },
-        { visittype: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const visits = await Visit.find(query)
-      .populate("patientId", "patientName uhid mobileNo")
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Visit.countDocuments(query);
+    const result = await paginate(Visit, {
+      query: finalQuery,
+      page,
+      limit,
+      populate: {
+        path: "patientId",
+        select: "patientName uhid mobileNo"
+      }
+    });
 
     // Format data for response
-    const formattedVisits = visits.map((visit) => ({
+    const formattedVisits = result.data.map((visit) => ({
       id: visit._id,
       visitId: visit.visitId,
       patient: visit.patientId
@@ -83,19 +73,14 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
 
     console.log(
       `[${new Date().toISOString()}] GET /api/visits - SUCCESS 200 - Retrieved ${
-        visits.length
+        result.data.length
       } visits`
     );
     res.json({
       success: true,
       data: formattedVisits,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        total: total,
-        limit: limit,
-      },
-      total,
+      pagination: result.pagination,
+      total: result.total,
     });
   } catch (error) {
     console.error(
@@ -258,11 +243,118 @@ router.post("/", validate(createVisitSchema), async (req, res) => {
         serviceData.serviceName = dbService.name;
         serviceData.serviceCode = dbService.code;
         serviceData.rate = dbService.rate;
+        serviceData.category = dbService.category; // keep category for lab order logic
       }
     }
 
     const visit = new Visit(visitData);
     await visit.save();
+
+    // --- 🔥 Auto Create Lab Orders ---
+    const pathologyServices = existingServices.filter(
+      (s) => s.category === "pathology"
+    );
+    const radiologyServices = existingServices.filter(
+      (s) => s.category === "radiology"
+    );
+
+    // Create separate lab orders for pathology and radiology
+    const createLabOrderForCategory = async (services, category) => {
+      if (services.length === 0) return null;
+
+      const order = new LabOrder({
+        patientId: visit.patientId,
+        visitId: visit._id,
+        doctorName: visitData.visitingdoctor,
+        doctorSpecialization: "",
+        orderDate: new Date(),
+        status: ORDER_STATUS.PENDING,
+        patientInfo: {
+          name: visitData.patientId ? "" : visitData.patientName, // Will be populated below
+          uhid: visitData.patientId ? "" : visitData.uhid,
+          age: visitData.patientId ? "" : visitData.age,
+          gender: visitData.patientId ? "" : visitData.gender,
+          mobileNo: visitData.patientId ? "" : visitData.mobileNo,
+        },
+      });
+
+      // If we have a patientId, populate patient info
+      if (visitData.patientId) {
+        const patient = await Patient.findById(visitData.patientId);
+        if (patient) {
+          order.patientInfo = {
+            name: patient.patientName,
+            uhid: patient.uhid,
+            age: `${patient.age} ${patient.ageUnit}`,
+            gender: patient.gender,
+            mobileNo: patient.mobileNo,
+          };
+        }
+      }
+
+      await order.save();
+
+      // Create LabOrderTest for each service in this category
+      for (const service of services) {
+        const labOrderTest = new (require("../models/LabOrderTest"))({
+          labOrderId: order._id,
+          serviceId: service._id,
+          status: "pending",
+          serviceInfo: {
+            name: service.name,
+            code: service.code,
+            category: service.category,
+          },
+        });
+        await labOrderTest.save();
+
+        // Create placeholder LabResults for each parameter of this service
+        const parameters = await require("../models/ParameterMaster")
+          .find({
+            serviceId: service._id,
+            isActive: true,
+          })
+          .sort({ sortOrder: 1 });
+
+        for (const parameter of parameters) {
+          const labResult = new (require("../models/LabResult"))({
+            labOrderTestId: labOrderTest._id,
+            parameterId: parameter._id,
+            value: "",
+            unit: parameter.unit || "",
+            referenceRange: parameter.referenceRange || "",
+            status: "pending",
+            enteredBy: visit.patientId, // Temporary - should be actual user
+            parameterInfo: {
+              name: parameter.parameterName,
+              code: parameter.parameterCode,
+              dataType: parameter.dataType,
+              methodology: parameter.methodology,
+            },
+          });
+          await labResult.save();
+        }
+      }
+
+      return order;
+    };
+
+    const pathologyOrder = await createLabOrderForCategory(
+      pathologyServices,
+      "pathology"
+    );
+    const radiologyOrder = await createLabOrderForCategory(
+      radiologyServices,
+      "radiology"
+    );
+
+    const createdOrders = [pathologyOrder, radiologyOrder].filter(Boolean);
+
+    if (createdOrders.length > 0) {
+      console.log(
+        `[VISIT] Created ${createdOrders.length} lab orders for visit ${visit.visitId} (${pathologyServices.length} pathology, ${radiologyServices.length} radiology services)`
+      );
+    }
 
     // Populate patient data for response
     await visit.populate("patientId", "patientName name uhid mobileNo");
@@ -398,11 +490,103 @@ router.post(
           serviceData.serviceName = dbService.name;
           serviceData.serviceCode = dbService.code;
           serviceData.rate = dbService.rate;
+          serviceData.category = dbService.category; // keep category for lab order logic
         }
       }
 
       const visit = new Visit(visitData);
       await visit.save();
+
+      // --- 🔥 Auto Create Lab Orders ---
+      const pathologyServices = existingServices.filter(
+        (s) => s.category === "pathology"
+      );
+      const radiologyServices = existingServices.filter(
+        (s) => s.category === "radiology"
+      );
+
+      // Create separate lab orders for pathology and radiology
+      const createLabOrderForCategory = async (services, category) => {
+        if (services.length === 0) return null;
+
+        const order = new LabOrder({
+          patientId: visit.patientId,
+          visitId: visit._id,
+          doctorName: visitData.visitingdoctor,
+          doctorSpecialization: "",
+          orderDate: new Date(),
+          status: ORDER_STATUS.PENDING,
+          patientInfo: {
+            name: patient.patientName,
+            uhid: patient.uhid,
+            age: `${patient.age} ${patient.ageUnit}`,
+            gender: patient.gender,
+            mobileNo: patient.mobileNo,
+          },
+        });
+        await order.save();
+
+        // Create LabOrderTest for each service in this category
+        for (const service of services) {
+          const labOrderTest = new (require("../models/LabOrderTest"))({
+            labOrderId: order._id,
+            serviceId: service._id,
+            status: "pending",
+            serviceInfo: {
+              name: service.name,
+              code: service.code,
+              category: service.category,
+            },
+          });
+          await labOrderTest.save();
+
+          // Create placeholder LabResults for each parameter of this service
+          const parameters = await require("../models/ParameterMaster")
+            .find({
+              serviceId: service._id,
+              isActive: true,
+            })
+            .sort({ sortOrder: 1 });
+
+          for (const parameter of parameters) {
+            const labResult = new (require("../models/LabResult"))({
+              labOrderTestId: labOrderTest._id,
+              parameterId: parameter._id,
+              value: "",
+              unit: parameter.unit || "",
+              referenceRange: parameter.referenceRange || "",
+              status: "pending",
+              enteredBy: visit.patientId, // Temporary - should be actual user
+              parameterInfo: {
+                name: parameter.parameterName,
+                code: parameter.parameterCode,
+                dataType: parameter.dataType,
+                methodology: parameter.methodology,
+              },
+            });
+            await labResult.save();
+          }
+        }
+
+        return order;
+      };
+
+      const pathologyOrder = await createLabOrderForCategory(
+        pathologyServices,
+        "pathology"
+      );
+      const radiologyOrder = await createLabOrderForCategory(
+        radiologyServices,
+        "radiology"
+      );
+
+      const createdOrders = [pathologyOrder, radiologyOrder].filter(Boolean);
+
+      if (createdOrders.length > 0) {
+        console.log(
+          `[VISIT] Created ${createdOrders.length} lab orders for patient visit ${visit.visitId} (${pathologyServices.length} pathology, ${radiologyServices.length} radiology services)`
+        );
+      }
 
       // Populate patient data for response
       await visit.populate("patientId", "patientName name uhid mobileNo");
