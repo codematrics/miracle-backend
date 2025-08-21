@@ -46,7 +46,7 @@ const createOpdBillingSchema = z
     patientInfo: patientInfoSchema,
     patientCategory: z.string().min(1, "Patient Category is required"),
     refby: z.string().min(1, "Ref By is required"),
-    consultantDoctor: z.string().min(1, "Consultant Doctor is required"),
+    doctorId: z.string().min(1, "Doctor ID is required").max(20, "Doctor ID too long").trim(),
     priority: z.enum(PRIORITY).optional(),
     paymentMode: z.enum(PAYMENT_MODES).optional(),
     paidAmount: z

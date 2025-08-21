@@ -2,6 +2,7 @@ const express = require("express");
 const Visit = require("../models/Visit");
 const Patient = require("../models/Patient");
 const Service = require("../models/Service");
+const Doctor = require("../models/Doctor");
 const LabOrder = require("../models/LabOrder");
 const { ORDER_STATUS } = require("../constants/enums");
 const { validate } = require("../middleware/validation");
@@ -10,7 +11,12 @@ const {
   updateVisitSchema,
   visitQuerySchema,
 } = require("../validations/visitSchema");
-const { paginate, buildSearchQuery, buildDateRangeQuery, combineQueries } = require("../lib/pagination");
+const {
+  paginate,
+  buildSearchQuery,
+  buildDateRangeQuery,
+  combineQueries,
+} = require("../lib/pagination");
 
 const router = express.Router();
 
@@ -25,16 +31,21 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
     // Build individual query parts
     const statusQuery = status ? { status } : {};
     const patientQuery = patientId ? { patientId } : {};
-    const dateQuery = buildDateRangeQuery('visitDate', from, to);
+    const dateQuery = buildDateRangeQuery("visitDate", from, to);
     const searchQuery = buildSearchQuery(search, [
-      'visitId',
-      'refby',
-      'visitingdoctor',
-      'visittype'
+      "visitId",
+      "refby",
+      "visitingdoctor",
+      "visittype",
     ]);
 
     // Combine all queries
-    const finalQuery = combineQueries(statusQuery, patientQuery, dateQuery, searchQuery);
+    const finalQuery = combineQueries(
+      statusQuery,
+      patientQuery,
+      dateQuery,
+      searchQuery
+    );
 
     const result = await paginate(Visit, {
       query: finalQuery,
@@ -42,8 +53,8 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
       limit,
       populate: {
         path: "patientId",
-        select: "patientName uhid mobileNo"
-      }
+        select: "patientName uhid mobileNo",
+      },
     });
 
     // Format data for response
@@ -203,6 +214,30 @@ router.post("/", validate(createVisitSchema), async (req, res) => {
         });
       }
     }
+
+    // Validate doctor exists and get doctor information
+    const doctor = await Doctor.findOne({ employeeId: visitData.doctorId, isActive: true });
+    if (!doctor) {
+      console.warn(
+        `[${new Date().toISOString()}] POST /api/visits - ERROR 404 - Doctor not found: ${
+          visitData.doctorId
+        }`
+      );
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+        errors: [
+          {
+            field: "doctorId",
+            message: "Doctor with this Employee ID does not exist or is inactive",
+          },
+        ],
+      });
+    }
+
+    // Replace doctorId with visitingdoctor name
+    visitData.visitingdoctor = doctor.doctorName;
+    delete visitData.doctorId;
 
     // Validate all services exist
     const serviceIds = visitData.services.map((s) => s.serviceId);
@@ -446,11 +481,33 @@ router.post(
         });
       }
 
-      // Add patient ID to visit data
+      // Validate doctor exists and get doctor information
+      const doctor = await Doctor.findOne({ employeeId: req.body.doctorId, isActive: true });
+      if (!doctor) {
+        console.warn(
+          `[${new Date().toISOString()}] POST /api/visits/patient/${
+            req.params.patientId
+          } - ERROR 404 - Doctor not found: ${req.body.doctorId}`
+        );
+        return res.status(404).json({
+          success: false,
+          message: "Doctor not found",
+          errors: [
+            {
+              field: "doctorId",
+              message: "Doctor with this Employee ID does not exist or is inactive",
+            },
+          ],
+        });
+      }
+
+      // Add patient ID to visit data and replace doctorId with visitingdoctor name
       const visitData = {
         ...req.body,
         patientId: req.params.patientId,
+        visitingdoctor: doctor.doctorName,
       };
+      delete visitData.doctorId;
 
       // Validate all services exist and update service data
       const serviceIds = visitData.services.map((s) => s.serviceId);
@@ -512,8 +569,8 @@ router.post(
         const order = new LabOrder({
           patientId: visit.patientId,
           visitId: visit._id,
-          doctorName: visitData.visitingdoctor,
-          doctorSpecialization: "",
+          doctorName: doctor.doctorName,
+          doctorSpecialization: doctor.specialization,
           orderDate: new Date(),
           status: ORDER_STATUS.PENDING,
           patientInfo: {

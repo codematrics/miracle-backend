@@ -2,6 +2,7 @@ const express = require("express");
 const OpdBilling = require("../models/OpdBilling");
 const Patient = require("../models/Patient");
 const Service = require("../models/Service");
+const Doctor = require("../models/Doctor");
 const { validate } = require("../middleware/validation");
 const {
   createOpdBillingSchema,
@@ -252,6 +253,31 @@ router.post("/", validate(createOpdBillingSchema), async (req, res) => {
         });
       }
     }
+
+    // Validate doctor exists and get doctor information
+    const doctor = await Doctor.findOne({ employeeId: billData.doctorId, isActive: true });
+    if (!doctor) {
+      console.warn(
+        `[${new Date().toISOString()}] POST /api/opd-billing - ERROR 404 - Doctor not found: ${
+          billData.doctorId
+        }`
+      );
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+        errors: [
+          {
+            field: "doctorId",
+            message: "Doctor with this Employee ID does not exist or is inactive",
+          },
+        ],
+      });
+    }
+
+    // Replace doctorId with consultantDoctor name
+    billData.consultantDoctor = doctor.doctorName;
+    billData.doctorSpecialization = doctor.specialization;
+    delete billData.doctorId;
 
     // Validate services exist
     const serviceIds = billData.services.map((s) => s.serviceId);
