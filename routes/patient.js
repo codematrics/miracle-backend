@@ -1,5 +1,7 @@
 const express = require("express");
 const Patient = require("../models/Patient");
+const Visit = require("../models/Visit");
+const Doctor = require("../models/Doctor");
 const { validate } = require("../middleware/validation");
 const {
   createPatientSchema,
@@ -193,6 +195,141 @@ router.post("/", validate(createPatientSchema), async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+});
+
+// GET /api/patients/:uhid/details - Get Comprehensive Patient Details
+router.get("/:uhid/details", async (req, res) => {
+  console.log(
+    `[${new Date().toISOString()}] GET /api/patients/${req.params.uhid}/details - Request received`
+  );
+  try {
+    const { uhid } = req.params;
+
+    // Find patient by UHID
+    const patient = await Patient.findOne({ uhid }).lean();
+    if (!patient) {
+      console.warn(
+        `[${new Date().toISOString()}] GET /api/patients/${uhid}/details - ERROR 404 - Patient not found`
+      );
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found",
+      });
+    }
+
+    // Get all visits for this patient with doctor details
+    const visits = await Visit.aggregate([
+      { $match: { patientId: patient._id } },
+      { $sort: { visitDate: -1 } }, // Most recent first
+      {
+        $lookup: {
+          from: "doctors",
+          let: { doctorName: "$visitingdoctor" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$doctorName", "$$doctorName"]
+                }
+              }
+            }
+          ],
+          as: "doctorDetails"
+        }
+      },
+      {
+        $project: {
+          visitId: 1,
+          visitDate: 1,
+          visitingdoctor: 1,
+          visittype: 1,
+          refby: 1,
+          chiefComplaint: 1,
+          vitals: 1,
+          diagnosis: 1,
+          pastHistory: 1,
+          allergies: 1,
+          investigation: 1,
+          advice: 1,
+          medications: 1,
+          services: 1,
+          totalAmount: 1,
+          status: 1,
+          createdAt: 1,
+          doctorInfo: { $arrayElemAt: ["$doctorDetails", 0] }
+        }
+      }
+    ]);
+
+    // Get most recent visit details
+    const recentVisit = visits[0] || null;
+    const previousVisits = visits.slice(1); // All visits except the most recent
+
+    // Format patient address
+    const address = patient.address ? 
+      `${patient.address.village}, ${patient.address.district}, ${patient.address.state}`.replace(/,\s*,/g, ',').replace(/^,|,$/g, '') 
+      : '';
+
+    // Format patient name with relation
+    const patientName = `${patient.patientName} ${patient.relation} ${patient.fatherOrHusbandName}`;
+
+    // Format age and gender
+    const ageGender = `${patient.age} ${patient.ageUnit} / ${patient.gender.charAt(0).toUpperCase()}`;
+
+    // Prepare response
+    const patientDetails = {
+      uhid: patient.uhid,
+      patientName: patientName,
+      mobileNo: patient.mobileNo,
+      ageGender: ageGender,
+      address: address,
+      recentVisit: recentVisit ? {
+        visitNo: recentVisit.visitId,
+        visitDate: recentVisit.visitDate,
+        doctorName: recentVisit.visitingdoctor,
+        licenseNo: recentVisit.doctorInfo?.licenseNo || 'N/A',
+        specialization: recentVisit.doctorInfo?.qualification || 'N/A',
+        department: recentVisit.doctorInfo?.department || 'General Medicine',
+        chiefComplaint: recentVisit.chiefComplaint || 'N/A',
+        vitals: recentVisit.vitals || {},
+        diagnosis: recentVisit.diagnosis || {},
+        pastHistory: recentVisit.pastHistory || 'N/A',
+        allergies: recentVisit.allergies || 'None',
+        investigation: recentVisit.investigation || 'N/A',
+        advice: recentVisit.advice || 'N/A',
+        medications: recentVisit.medications || []
+      } : null,
+      previousVisits: previousVisits.map((visit, index) => ({
+        serialNo: index + 1,
+        visitNo: visit.visitId,
+        visitDate: visit.visitDate,
+        doctorName: visit.visitingdoctor,
+        advice: visit.advice || 'N/A'
+      }))
+    };
+
+    console.log(
+      `[${new Date().toISOString()}] GET /api/patients/${uhid}/details - SUCCESS 200 - Patient details retrieved`
+    );
+
+    res.json({
+      success: true,
+      data: patientDetails,
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] GET /api/patients/${req.params.uhid}/details - ERROR 500:`,
+      {
+        message: error.message,
+        stack: error.stack,
+        uhid: req.params.uhid,
+      }
+    );
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 });

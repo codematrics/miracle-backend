@@ -78,7 +78,68 @@ const visitSchema = new mongoose.Schema(
       type: String,
       enum: ['active', 'completed', 'cancelled'],
       default: 'active'
-    }
+    },
+    
+    // Clinical Information
+    chiefComplaint: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    },
+    
+    // Vitals
+    vitals: {
+      temperature: { type: String, trim: true }, // e.g., "98.6 °F"
+      spo2: { type: String, trim: true }, // e.g., "98%"
+      height: { type: String, trim: true }, // e.g., "167 cm"
+      weight: { type: String, trim: true }, // e.g., "70 kg"
+      bloodPressure: { type: String, trim: true }, // e.g., "120/80 mmHg"
+      respiratoryRate: { type: String, trim: true }, // e.g., "16 breaths/min"
+      pulse: { type: String, trim: true } // e.g., "72 bpm"
+    },
+    
+    // Diagnosis
+    diagnosis: {
+      provisional: { type: String, trim: true, maxlength: 500 },
+      final: { type: String, trim: true, maxlength: 500 },
+      additional: { type: String, trim: true, maxlength: 500 }
+    },
+    
+    // Medical History
+    pastHistory: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    },
+    allergies: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "None"
+    },
+    
+    // Investigation
+    investigation: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    },
+    
+    // Advice
+    advice: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    },
+    
+    // Medications
+    medications: [{
+      medicine: { type: String, required: true, trim: true },
+      dosage: { type: String, required: true, trim: true },
+      frequency: { type: String, required: true, trim: true },
+      duration: { type: String, required: true, trim: true },
+      instructions: { type: String, trim: true }
+    }]
   },
   { timestamps: true }
 );

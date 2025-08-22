@@ -51,6 +51,58 @@ const labOrderQuerySchema = z.object({
   from: z.string().optional(), // Date string
   to: z.string().optional(), // Date string
   all: z.string().optional(),
+  category: z.enum(["pathology", "radiology", "laboratory"]).optional(), // Service category filter
+  mobileNo: z.string().optional(), // Patient mobile number filter
+  patientName: z.string().optional(), // Patient name filter
+  uhid: z.string().optional(), // Patient UHID filter
+});
+
+// Entry Orders Query Schema (same filters as labOrderQuerySchema)
+const entryOrdersQuerySchema = z.object({
+  page: z
+    .string()
+    .regex(/^\d+$/, "Page must be a number")
+    .transform(Number)
+    .optional()
+    .default(1),
+  limit: z
+    .string()
+    .regex(/^\d+$/, "Limit must be a number")
+    .transform(Number)
+    .optional()
+    .default(10),
+  search: z.string().optional(),
+  priority: z.enum(["normal", "urgent", "stat"]).optional(),
+  category: z.enum(["pathology", "radiology", "laboratory"]).optional(),
+  mobileNo: z.string().optional(), // Patient mobile number filter
+  patientName: z.string().optional(), // Patient name filter
+  uhid: z.string().optional(), // Patient UHID filter
+  from: z.string().optional(), // Date string
+  to: z.string().optional(), // Date string
+});
+
+// Authorization Query Schema (same filters as labOrderQuerySchema)
+const authorizationQuerySchema = z.object({
+  page: z
+    .string()
+    .regex(/^\d+$/, "Page must be a number")
+    .transform(Number)
+    .optional()
+    .default(1),
+  limit: z
+    .string()
+    .regex(/^\d+$/, "Limit must be a number")
+    .transform(Number)
+    .optional()
+    .default(10),
+  search: z.string().optional(),
+  priority: z.enum(["normal", "urgent", "stat"]).optional(),
+  category: z.enum(["pathology", "radiology", "laboratory"]).optional(),
+  mobileNo: z.string().optional(), // Patient mobile number filter
+  patientName: z.string().optional(), // Patient name filter
+  uhid: z.string().optional(), // Patient UHID filter
+  from: z.string().optional(), // Date string
+  to: z.string().optional(), // Date string
 });
 
 // Lab Order Test Schema
@@ -315,6 +367,8 @@ module.exports = {
   createLabOrderSchema,
   updateLabOrderSchema,
   labOrderQuerySchema,
+  entryOrdersQuerySchema,
+  authorizationQuerySchema,
 
   // Lab Order Test schemas
   updateLabOrderTestSchema,
