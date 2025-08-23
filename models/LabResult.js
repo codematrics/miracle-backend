@@ -25,8 +25,8 @@ const labResultSchema = new mongoose.Schema(
     },
     referenceRange: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     status: {
       type: String,
