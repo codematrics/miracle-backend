@@ -26,36 +26,193 @@ router.get("/", validate(visitQuerySchema, "query"), async (req, res) => {
     `[${new Date().toISOString()}] GET /api/visits - Request received`
   );
   try {
-    const { page, limit, search, status, patientId, from, to } = req.query;
+    const { 
+      page, 
+      limit, 
+      search, 
+      status, 
+      patientId, 
+      from, 
+      to, 
+      all,
+      mobileNo,
+      patientName,
+      uhid,
+      doctorName,
+      visitType,
+      refby
+    } = req.query;
 
-    // Build individual query parts
-    const statusQuery = status ? { status } : {};
-    const patientQuery = patientId ? { patientId } : {};
-    const dateQuery = buildDateRangeQuery("visitDate", from, to);
-    const searchQuery = buildSearchQuery(search, [
-      "visitId",
-      "refby",
-      "visitingdoctor",
-      "visittype",
-    ]);
+    // If we have patient-specific filters, we need to use aggregation
+    const hasPatientFilters = mobileNo || patientName || uhid;
 
-    // Combine all queries
-    const finalQuery = combineQueries(
-      statusQuery,
-      patientQuery,
-      dateQuery,
-      searchQuery
-    );
+    if (hasPatientFilters) {
+      // Use aggregation pipeline for patient-specific filtering
+      const pipeline = [
+        // Lookup patient details
+        {
+          $lookup: {
+            from: "patients",
+            localField: "patientId",
+            foreignField: "_id",
+            as: "patient",
+          },
+        },
+        { $unwind: "$patient" },
 
-    const result = await paginate(Visit, {
-      query: finalQuery,
-      page,
-      limit,
-      populate: {
-        path: "patientId",
-        select: "patientName uhid mobileNo",
-      },
-    });
+        // Apply filters
+        {
+          $match: {
+            ...(status && { status }),
+            ...(patientId && { patientId: new require('mongoose').Types.ObjectId(patientId) }),
+            ...(from && { visitDate: { $gte: new Date(from) } }),
+            ...(to && { visitDate: { ...( from && { $gte: new Date(from) }), $lte: new Date(to) } }),
+            ...(mobileNo && { "patient.mobileNo": { $regex: mobileNo, $options: "i" } }),
+            ...(patientName && { "patient.patientName": { $regex: patientName, $options: "i" } }),
+            ...(uhid && { "patient.uhid": { $regex: uhid, $options: "i" } }),
+            ...(doctorName && { visitingdoctor: { $regex: doctorName, $options: "i" } }),
+            ...(visitType && { visittype: { $regex: visitType, $options: "i" } }),
+            ...(refby && { refby: { $regex: refby, $options: "i" } }),
+            ...(search && {
+              $or: [
+                { visitId: { $regex: search, $options: "i" } },
+                { refby: { $regex: search, $options: "i" } },
+                { visitingdoctor: { $regex: search, $options: "i" } },
+                { visittype: { $regex: search, $options: "i" } },
+                { "patient.patientName": { $regex: search, $options: "i" } },
+                { "patient.uhid": { $regex: search, $options: "i" } },
+                { "patient.mobileNo": { $regex: search, $options: "i" } },
+              ],
+            }),
+          },
+        },
+
+        // Sort by visit date (newest first)
+        { $sort: { visitDate: -1 } },
+
+        // Add pagination if not requesting all
+        ...(all !== "true" ? [
+          { $skip: (parseInt(page) - 1) * parseInt(limit) },
+          { $limit: parseInt(limit) }
+        ] : []),
+
+        // Project fields to match expected format
+        {
+          $project: {
+            _id: 1,
+            visitId: 1,
+            patientId: "$patient",
+            refby: 1,
+            visitingdoctor: 1,
+            visittype: 1,
+            medicolegal: 1,
+            mediclaim_type: 1,
+            services: 1,
+            totalAmount: 1,
+            visitDate: 1,
+            status: 1,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      ];
+
+      // Get total count for pagination
+      const countPipeline = [
+        {
+          $lookup: {
+            from: "patients",
+            localField: "patientId",
+            foreignField: "_id",
+            as: "patient",
+          },
+        },
+        { $unwind: "$patient" },
+        {
+          $match: {
+            ...(status && { status }),
+            ...(patientId && { patientId: new require('mongoose').Types.ObjectId(patientId) }),
+            ...(from && { visitDate: { $gte: new Date(from) } }),
+            ...(to && { visitDate: { ...( from && { $gte: new Date(from) }), $lte: new Date(to) } }),
+            ...(mobileNo && { "patient.mobileNo": { $regex: mobileNo, $options: "i" } }),
+            ...(patientName && { "patient.patientName": { $regex: patientName, $options: "i" } }),
+            ...(uhid && { "patient.uhid": { $regex: uhid, $options: "i" } }),
+            ...(doctorName && { visitingdoctor: { $regex: doctorName, $options: "i" } }),
+            ...(visitType && { visittype: { $regex: visitType, $options: "i" } }),
+            ...(refby && { refby: { $regex: refby, $options: "i" } }),
+            ...(search && {
+              $or: [
+                { visitId: { $regex: search, $options: "i" } },
+                { refby: { $regex: search, $options: "i" } },
+                { visitingdoctor: { $regex: search, $options: "i" } },
+                { visittype: { $regex: search, $options: "i" } },
+                { "patient.patientName": { $regex: search, $options: "i" } },
+                { "patient.uhid": { $regex: search, $options: "i" } },
+                { "patient.mobileNo": { $regex: search, $options: "i" } },
+              ],
+            }),
+          },
+        },
+        { $count: "total" },
+      ];
+
+      const [visits, totalCount] = await Promise.all([
+        Visit.aggregate(pipeline),
+        Visit.aggregate(countPipeline),
+      ]);
+
+      const total = totalCount[0]?.total || 0;
+      const totalPages = all === "true" ? 1 : Math.ceil(total / parseInt(limit));
+
+      const result = {
+        data: visits,
+        pagination: all === "true" ? null : {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: totalPages,
+          hasNext: parseInt(page) < totalPages,
+          hasPrev: parseInt(page) > 1,
+        },
+        total,
+      };
+    } else {
+      // Use regular query for better performance when no patient filters
+      const statusQuery = status ? { status } : {};
+      const patientQuery = patientId ? { patientId } : {};
+      const dateQuery = buildDateRangeQuery("visitDate", from, to);
+      const doctorQuery = doctorName ? { visitingdoctor: { $regex: doctorName, $options: "i" } } : {};
+      const visitTypeQuery = visitType ? { visittype: { $regex: visitType, $options: "i" } } : {};
+      const refbyQuery = refby ? { refby: { $regex: refby, $options: "i" } } : {};
+      const searchQuery = buildSearchQuery(search, [
+        "visitId",
+        "refby",
+        "visitingdoctor",
+        "visittype",
+      ]);
+
+      // Combine all queries
+      const finalQuery = combineQueries(
+        statusQuery,
+        patientQuery,
+        dateQuery,
+        doctorQuery,
+        visitTypeQuery,
+        refbyQuery,
+        searchQuery
+      );
+
+      var result = await paginate(Visit, {
+        query: finalQuery,
+        page,
+        limit,
+        all: all === "true",
+        populate: {
+          path: "patientId",
+          select: "patientName uhid mobileNo",
+        },
+      });
+    }
 
     // Format data for response
     const formattedVisits = result.data.map((visit) => ({

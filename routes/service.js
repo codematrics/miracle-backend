@@ -146,33 +146,68 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// Function to generate unique service code
+async function generateServiceCode(category, serviceName) {
+  // Get category prefix (first 3 letters uppercase)
+  const categoryPrefix = category.substring(0, 3).toUpperCase();
+  
+  // Get service name prefix (first few letters, removing spaces/special chars)
+  const namePrefix = serviceName
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .substring(0, 4)
+    .toUpperCase();
+  
+  // Find the highest existing sequence number for this pattern
+  const pattern = new RegExp(`^${categoryPrefix}_${namePrefix}_\\d+$`);
+  const existingServices = await Service.find({ code: pattern })
+    .sort({ code: -1 })
+    .limit(1);
+  
+  let sequenceNumber = 1;
+  if (existingServices.length > 0) {
+    const lastCode = existingServices[0].code;
+    const lastSequence = parseInt(lastCode.split('_').pop());
+    if (!isNaN(lastSequence)) {
+      sequenceNumber = lastSequence + 1;
+    }
+  }
+  
+  // Format: CATEGORY_SERVICENAME_SEQUENCE (e.g., LAB_CBC_001)
+  return `${categoryPrefix}_${namePrefix}_${String(sequenceNumber).padStart(3, '0')}`;
+}
+
 // POST /api/services - Create New Service
 router.post("/", validate(createServiceSchema), async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] POST /api/services - Request received`
   );
   try {
-    // Check if service with same code exists
-    const existingService = await Service.findOne({
-      code: req.body.code,
-    });
-
-    if (existingService) {
-      console.warn(
-        `[${new Date().toISOString()}] POST /api/services - ERROR 400 - Service already exists with code: ${
-          req.body.code
-        }`
-      );
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: [
-          {
-            field: "code",
-            message: "Service code already exists",
-          },
-        ],
+    // Generate unique service code if not provided
+    if (!req.body.code) {
+      req.body.code = await generateServiceCode(req.body.category, req.body.name);
+    } else {
+      // Check if manually provided code exists
+      const existingService = await Service.findOne({
+        code: req.body.code,
       });
+
+      if (existingService) {
+        console.warn(
+          `[${new Date().toISOString()}] POST /api/services - ERROR 400 - Service already exists with code: ${
+            req.body.code
+          }`
+        );
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: [
+            {
+              field: "code",
+              message: "Service code already exists",
+            },
+          ],
+        });
+      }
     }
 
     const service = new Service(req.body);

@@ -18,7 +18,8 @@ const createServiceSchema = z
         "Service code should only contain uppercase letters, numbers, and underscores"
       )
       .trim()
-      .transform((str) => str.toUpperCase()),
+      .transform((str) => str.toUpperCase())
+      .optional(), // Make code optional since we'll auto-generate it
 
     description: z
       .string()

@@ -4,7 +4,7 @@ const { PARAMETER_DATATYPE_ENUM } = require("../constants/enums");
 const ParameterSchema = z.object({
   serviceId: z.string().min(1, "Service is required"),
   parameterName: z.string().min(1, "Parameter name is required"),
-  parameterCode: z.string().optional(), // making it optional
+  parameterCode: z.string().optional().transform((str) => str?.toUpperCase()), // making it optional, auto-generate if not provided
   unit: z.string().optional(),
   referenceRange: z.string().optional(),
 

@@ -87,8 +87,17 @@ const visitQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(['active', 'completed', 'cancelled']).optional(),
   patientId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.string().optional(), // Made flexible for date strings
+  to: z.string().optional(), // Made flexible for date strings
+  all: z.string().optional(),
+  // Patient-specific filters
+  mobileNo: z.string().optional(), // Patient mobile number filter
+  patientName: z.string().optional(), // Patient name filter
+  uhid: z.string().optional(), // Patient UHID filter
+  // Doctor and visit filters
+  doctorName: z.string().optional(), // Visiting doctor filter
+  visitType: z.string().optional(), // Visit type filter
+  refby: z.string().optional(), // Referred by filter
 });
 
 module.exports = {
