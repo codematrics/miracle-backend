@@ -41,7 +41,7 @@ const OpdBillingSchema = new mongoose.Schema(
     patientCategory: {
       type: String,
       enum: PATIENT_TYPES,
-      default: "general",
+      default: PATIENT_TYPES.GENERAL,
     },
     refby: { type: String },
     consultantDoctor: { type: String },
