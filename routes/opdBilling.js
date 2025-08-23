@@ -371,7 +371,7 @@ router.post("/", validate(createOpdBillingSchema), async (req, res) => {
             parameterId: parameter._id,
             value: "",
             unit: parameter.unit || "",
-            referenceRange: parameter.referenceRange || "",
+            ...(parameter.referenceRange ? { referenceRange: parameter.referenceRange } : {}),
             status: "pending",
             enteredBy: opdBill.patientId, // Temporary - should be actual user
             parameterInfo: {

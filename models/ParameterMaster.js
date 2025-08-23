@@ -21,6 +21,7 @@ const parameterMasterSchema = new mongoose.Schema(
       default: PARAMETER_DATATYPE_ENUM.text,
       required: true
     },
+    options: [{ type: String }],
     methodology: {
       type: String,
       trim: true,
