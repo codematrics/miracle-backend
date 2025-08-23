@@ -12,6 +12,8 @@ const {
   createLabOrderSchema,
   updateLabOrderSchema,
   labOrderQuerySchema,
+  entryOrdersQuerySchema,
+  authorizationQuerySchema,
   updateLabOrderTestSchema,
   collectSamplesSchema,
   createParameterSchema,
@@ -97,6 +99,9 @@ router.get(
         to,
         all,
         category, // Add category filter for pathology/radiology separation
+        mobileNo, // Patient mobile number filter
+        patientName, // Patient name filter
+        uhid, // Patient UHID filter
       } = req.query;
 
       // Build individual query parts
@@ -106,6 +111,12 @@ router.get(
       const doctorQuery = doctorId ? { doctorId } : {};
       const accessionQuery = accessionNo ? { accessionNo } : {};
       const dateQuery = buildDateRangeQuery("orderDate", from, to);
+      
+      // Patient-specific filters
+      const mobileNoQuery = mobileNo ? { "patientInfo.mobileNo": { $regex: mobileNo, $options: "i" } } : {};
+      const patientNameQuery = patientName ? { "patientInfo.name": { $regex: patientName, $options: "i" } } : {};
+      const uhidQuery = uhid ? { "patientInfo.uhid": { $regex: uhid, $options: "i" } } : {};
+      
       const searchQuery = buildSearchQuery(search, [
         "accessionNo",
         "patientInfo.name",
@@ -122,7 +133,10 @@ router.get(
         doctorQuery,
         accessionQuery,
         dateQuery,
-        searchQuery
+        searchQuery,
+        mobileNoQuery,
+        patientNameQuery,
+        uhidQuery
       );
 
       // If category is specified, we need to join with LabOrderTest to filter by service category
@@ -1456,12 +1470,23 @@ router.post(
 // =============================================================================
 
 // GET /api/lab/entry-orders - Get Orders Ready for Result Entry (Grouped by Order)
-router.get("/entry-orders", async (req, res) => {
+router.get("/entry-orders", validate(entryOrdersQuerySchema, "query"), async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] GET /api/lab/entry-orders - Request received`
   );
   try {
-    const { page = 1, limit = 10, search, priority, category } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      search, 
+      priority, 
+      category, 
+      mobileNo, 
+      patientName, 
+      uhid,
+      from,
+      to 
+    } = req.query;
 
     // Build aggregation pipeline to get orders with collected tests
     let pipeline = [
@@ -1495,6 +1520,17 @@ router.get("/entry-orders", async (req, res) => {
 
       // Filter by priority if specified
       ...(priority ? [{ $match: { "labOrder.priority": priority } }] : []),
+
+      // Patient-specific filters for entry-orders
+      ...(mobileNo ? [{ $match: { "labOrder.patientInfo.mobileNo": { $regex: mobileNo, $options: "i" } } }] : []),
+      ...(patientName ? [{ $match: { "labOrder.patientInfo.name": { $regex: patientName, $options: "i" } } }] : []),
+      ...(uhid ? [{ $match: { "labOrder.patientInfo.uhid": { $regex: uhid, $options: "i" } } }] : []),
+
+      // Date range filter for entry-orders
+      ...(from || to ? [{ $match: { "labOrder.orderDate": { 
+        ...(from && { $gte: new Date(from) }),
+        ...(to && { $lte: new Date(to) })
+      } } }] : []),
 
       // Search filter
       ...(search
@@ -1902,12 +1938,23 @@ router.post("/entry/save", validate(saveResultsSchema), async (req, res) => {
 // =============================================================================
 
 // GET /api/lab/authorization - Get Orders Ready for Authorization (Grouped by Order)
-router.get("/authorization", async (req, res) => {
+router.get("/authorization", validate(authorizationQuerySchema, "query"), async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] GET /api/lab/authorization - Request received`
   );
   try {
-    const { page = 1, limit = 10, search, priority, category } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      search, 
+      priority, 
+      category, 
+      mobileNo, 
+      patientName, 
+      uhid,
+      from,
+      to 
+    } = req.query;
 
     // Build aggregation pipeline to get orders with saved tests
     let pipeline = [
@@ -1941,6 +1988,17 @@ router.get("/authorization", async (req, res) => {
 
       // Filter by priority if specified
       ...(priority ? [{ $match: { "labOrder.priority": priority } }] : []),
+
+      // Patient-specific filters for authorization
+      ...(mobileNo ? [{ $match: { "labOrder.patientInfo.mobileNo": { $regex: mobileNo, $options: "i" } } }] : []),
+      ...(patientName ? [{ $match: { "labOrder.patientInfo.name": { $regex: patientName, $options: "i" } } }] : []),
+      ...(uhid ? [{ $match: { "labOrder.patientInfo.uhid": { $regex: uhid, $options: "i" } } }] : []),
+
+      // Date range filter for authorization
+      ...(from || to ? [{ $match: { "labOrder.orderDate": { 
+        ...(from && { $gte: new Date(from) }),
+        ...(to && { $lte: new Date(to) })
+      } } }] : []),
 
       // Search filter
       ...(search

@@ -26,6 +26,12 @@ const doctorSchema = new mongoose.Schema(
       trim: true,
       maxlength: 200,
     },
+    licenseNo: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      uppercase: true,
+    },
     email: {
       type: String,
       trim: true,
