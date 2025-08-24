@@ -6,114 +6,125 @@ const {
   buildSearchQuery,
   combineQueries,
 } = require("../lib/pagination");
+const {
+  createDoctorController,
+  listDoctorsController,
+  updateDoctorController,
+  deleteDoctorController,
+} = require("../controllers/doctor/doctor");
 
 const router = express.Router();
 
 // GET /api/doctors - List Doctors with Filters & Pagination
-router.get("/", async (req, res) => {
-  console.log(
-    `[${new Date().toISOString()}] GET /api/doctors - Request received`
-  );
-  try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search, 
-      specialization, 
-      department, 
-      isActive, 
-      isConsultant,
-      all 
-    } = req.query;
+// router.get("/", async (req, res) => {
+//   console.log(
+//     `[${new Date().toISOString()}] GET /api/doctors - Request received`
+//   );
+//   try {
+//     const {
+//       page = 1,
+//       limit = 10,
+//       search,
+//       specialization,
+//       department,
+//       isActive,
+//       isConsultant,
+//       all,
+//     } = req.query;
 
-    // Build query filters
-    const specializationQuery = specialization ? { specialization } : {};
-    const departmentQuery = department ? { department } : {};
-    const activeQuery = isActive !== undefined ? { isActive: isActive === "true" } : {};
-    const consultantQuery = isConsultant !== undefined ? { isConsultant: isConsultant === "true" } : {};
-    
-    const searchQuery = buildSearchQuery(search, [
-      "doctorName",
-      "employeeId",
-      "specialization",
-      "department",
-      "qualification",
-      "email",
-      "mobileNo",
-    ]);
+//     // Build query filters
+//     const specializationQuery = specialization ? { specialization } : {};
+//     const departmentQuery = department ? { department } : {};
+//     const activeQuery =
+//       isActive !== undefined ? { isActive: isActive === "true" } : {};
+//     const consultantQuery =
+//       isConsultant !== undefined
+//         ? { isConsultant: isConsultant === "true" }
+//         : {};
 
-    // Combine all queries
-    const finalQuery = combineQueries(
-      specializationQuery,
-      departmentQuery,
-      activeQuery,
-      consultantQuery,
-      searchQuery
-    );
+//     const searchQuery = buildSearchQuery(search, [
+//       "doctorName",
+//       "employeeId",
+//       "specialization",
+//       "department",
+//       "qualification",
+//       "email",
+//       "mobileNo",
+//     ]);
 
-    const result = await paginate(Doctor, {
-      query: finalQuery,
-      page,
-      limit,
-      all: all === "true",
-      sort: { doctorName: 1 },
-    });
+//     // Combine all queries
+//     const finalQuery = combineQueries(
+//       specializationQuery,
+//       departmentQuery,
+//       activeQuery,
+//       consultantQuery,
+//       searchQuery
+//     );
 
-    // Format data for response
-    const formattedDoctors = result.data.map((doctor) => ({
-      id: doctor._id,
-      doctorName: doctor.doctorName,
-      employeeId: doctor.employeeId,
-      displayName: doctor.displayName,
-      nameWithSpecialization: doctor.nameWithSpecialization,
-      specialization: doctor.specialization,
-      qualification: doctor.qualification,
-      email: doctor.email,
-      mobileNo: doctor.mobileNo,
-      department: doctor.department,
-      designation: doctor.designation,
-      consultationFee: doctor.consultationFee,
-      emergencyContactNo: doctor.emergencyContactNo,
-      address: doctor.address,
-      joiningDate: doctor.joiningDate,
-      isActive: doctor.isActive,
-      isConsultant: doctor.isConsultant,
-      availableDays: doctor.availableDays,
-      consultationTimings: doctor.consultationTimings,
-      notes: doctor.notes,
-      createdAt: doctor.createdAt,
-      updatedAt: doctor.updatedAt,
-    }));
+//     const result = await paginate(Doctor, {
+//       query: finalQuery,
+//       page,
+//       limit,
+//       all: all === "true",
+//       sort: { doctorName: 1 },
+//     });
 
-    const logMessage =
-      all === "true"
-        ? `Retrieved all ${result.data.length} doctors`
-        : `Retrieved ${result.data.length} doctors`;
+//     // Format data for response
+//     const formattedDoctors = result.data.map((doctor) => ({
+//       id: doctor._id,
+//       doctorName: doctor.doctorName,
+//       employeeId: doctor.employeeId,
+//       displayName: doctor.displayName,
+//       nameWithSpecialization: doctor.nameWithSpecialization,
+//       specialization: doctor.specialization,
+//       qualification: doctor.qualification,
+//       email: doctor.email,
+//       mobileNo: doctor.mobileNo,
+//       department: doctor.department,
+//       designation: doctor.designation,
+//       consultationFee: doctor.consultationFee,
+//       emergencyContactNo: doctor.emergencyContactNo,
+//       address: doctor.address,
+//       joiningDate: doctor.joiningDate,
+//       isActive: doctor.isActive,
+//       isConsultant: doctor.isConsultant,
+//       availableDays: doctor.availableDays,
+//       consultationTimings: doctor.consultationTimings,
+//       notes: doctor.notes,
+//       createdAt: doctor.createdAt,
+//       updatedAt: doctor.updatedAt,
+//     }));
 
-    console.log(
-      `[${new Date().toISOString()}] GET /api/doctors - SUCCESS 200 - ${logMessage}`
-    );
+//     const logMessage =
+//       all === "true"
+//         ? `Retrieved all ${result.data.length} doctors`
+//         : `Retrieved ${result.data.length} doctors`;
 
-    res.json({
-      success: true,
-      data: formattedDoctors,
-      pagination: result.pagination,
-      total: result.total,
-    });
-  } catch (error) {
-    console.error(
-      `[${new Date().toISOString()}] GET /api/doctors - ERROR 500:`,
-      {
-        message: error.message,
-        stack: error.stack,
-      }
-    );
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
+//     console.log(
+//       `[${new Date().toISOString()}] GET /api/doctors - SUCCESS 200 - ${logMessage}`
+//     );
+
+//     res.json({
+//       success: true,
+//       data: formattedDoctors,
+//       pagination: result.pagination,
+//       total: result.total,
+//     });
+//   } catch (error) {
+//     console.error(
+//       `[${new Date().toISOString()}] GET /api/doctors - ERROR 500:`,
+//       {
+//         message: error.message,
+//         stack: error.stack,
+//       }
+//     );
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// });
+router.get("/", listDoctorsController);
 
 // GET /api/doctors/dropdown - Get Doctors for Dropdown
 router.get("/dropdown", async (req, res) => {
@@ -125,13 +136,16 @@ router.get("/dropdown", async (req, res) => {
 
     // Build query for active doctors only
     let query = { isActive: true };
-    
+
     if (specialization) query.specialization = specialization;
     if (department) query.department = department;
-    if (isConsultant !== undefined) query.isConsultant = isConsultant === "true";
+    if (isConsultant !== undefined)
+      query.isConsultant = isConsultant === "true";
 
     const doctors = await Doctor.find(query)
-      .select("doctorName employeeId specialization department qualification consultationFee")
+      .select(
+        "doctorName employeeId specialization department qualification consultationFee"
+      )
       .sort({ doctorName: 1 });
 
     // Format for dropdown
@@ -178,8 +192,10 @@ router.get("/specializations", async (req, res) => {
     `[${new Date().toISOString()}] GET /api/doctors/specializations - Request received`
   );
   try {
-    const specializations = await Doctor.distinct("specialization", { isActive: true });
-    
+    const specializations = await Doctor.distinct("specialization", {
+      isActive: true,
+    });
+
     const dropdownData = specializations.map((spec) => ({
       value: spec,
       label: spec,
@@ -218,7 +234,7 @@ router.get("/departments", async (req, res) => {
   );
   try {
     const departments = await Doctor.distinct("department", { isActive: true });
-    
+
     const dropdownData = departments.map((dept) => ({
       value: dept,
       label: dept,
@@ -277,7 +293,7 @@ router.get("/:id", async (req, res) => {
         req.params.id
       } - SUCCESS 200 - Doctor retrieved`
     );
-    
+
     res.json({
       success: true,
       data: {
@@ -324,212 +340,215 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /api/doctors - Create New Doctor
-router.post("/", async (req, res) => {
-  console.log(
-    `[${new Date().toISOString()}] POST /api/doctors - Request received`
-  );
-  try {
-    const doctorData = req.body;
+// router.post("/", async (req, res) => {
+//   console.log(
+//     `[${new Date().toISOString()}] POST /api/doctors - Request received`
+//   );
+//   try {
+//     const doctorData = req.body;
 
-    // Check if email already exists (if provided)
-    if (doctorData.email) {
-      const existingEmailDoctor = await Doctor.findOne({
-        email: doctorData.email,
-      });
-      if (existingEmailDoctor) {
-        return res.status(400).json({
-          success: false,
-          message: "Email already exists",
-          errors: [
-            {
-              field: "email",
-              message: "A doctor with this email already exists",
-            },
-          ],
-        });
-      }
-    }
+//     // Check if email already exists (if provided)
+//     if (doctorData.email) {
+//       const existingEmailDoctor = await Doctor.findOne({
+//         email: doctorData.email,
+//       });
+//       if (existingEmailDoctor) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Email already exists",
+//           errors: [
+//             {
+//               field: "email",
+//               message: "A doctor with this email already exists",
+//             },
+//           ],
+//         });
+//       }
+//     }
 
-    const doctor = new Doctor(doctorData);
-    await doctor.save();
+//     const doctor = new Doctor(doctorData);
+//     await doctor.save();
 
-    console.log(
-      `[${new Date().toISOString()}] POST /api/doctors - SUCCESS 201 - Doctor created: ${
-        doctor.doctorName
-      } (${doctor.employeeId})`
-    );
+//     console.log(
+//       `[${new Date().toISOString()}] POST /api/doctors - SUCCESS 201 - Doctor created: ${
+//         doctor.doctorName
+//       } (${doctor.employeeId})`
+//     );
 
-    res.status(201).json({
-      success: true,
-      message: "Doctor created successfully",
-      data: {
-        id: doctor._id,
-        doctorName: doctor.doctorName,
-        employeeId: doctor.employeeId,
-        displayName: doctor.displayName,
-        specialization: doctor.specialization,
-        department: doctor.department,
-        isActive: doctor.isActive,
-      },
-    });
-  } catch (error) {
-    console.error(
-      `[${new Date().toISOString()}] POST /api/doctors - ERROR 500:`,
-      {
-        message: error.message,
-        stack: error.stack,
-        requestBody: req.body,
-      }
-    );
+//     res.status(201).json({
+//       success: true,
+//       message: "Doctor created successfully",
+//       data: {
+//         id: doctor._id,
+//         doctorName: doctor.doctorName,
+//         employeeId: doctor.employeeId,
+//         displayName: doctor.displayName,
+//         specialization: doctor.specialization,
+//         department: doctor.department,
+//         isActive: doctor.isActive,
+//       },
+//     });
+//   } catch (error) {
+//     console.error(
+//       `[${new Date().toISOString()}] POST /api/doctors - ERROR 500:`,
+//       {
+//         message: error.message,
+//         stack: error.stack,
+//         requestBody: req.body,
+//       }
+//     );
 
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => ({
-        field: err.path,
-        message: err.message,
-      }));
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors,
-      });
-    }
+//     // Handle validation errors
+//     if (error.name === "ValidationError") {
+//       const errors = Object.values(error.errors).map((err) => ({
+//         field: err.path,
+//         message: err.message,
+//       }));
+//       return res.status(400).json({
+//         success: false,
+//         message: "Validation failed",
+//         errors,
+//       });
+//     }
 
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        message: `${field} already exists`,
-        errors: [
-          {
-            field,
-            message: `A doctor with this ${field} already exists`,
-          },
-        ],
-      });
-    }
+//     // Handle duplicate key error
+//     if (error.code === 11000) {
+//       const field = Object.keys(error.keyPattern)[0];
+//       return res.status(400).json({
+//         success: false,
+//         message: `${field} already exists`,
+//         errors: [
+//           {
+//             field,
+//             message: `A doctor with this ${field} already exists`,
+//           },
+//         ],
+//       });
+//     }
 
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// });
+router.post("/", createDoctorController);
+router.put("/:id", updateDoctorController);
+router.delete("/:id", deleteDoctorController);
 
 // PUT /api/doctors/:id - Update Doctor
-router.put("/:id", async (req, res) => {
-  console.log(
-    `[${new Date().toISOString()}] PUT /api/doctors/${
-      req.params.id
-    } - Request received`
-  );
-  try {
-    const doctorId = req.params.id;
-    const updateData = req.body;
+// router.put("/:id", async (req, res) => {
+//   console.log(
+//     `[${new Date().toISOString()}] PUT /api/doctors/${
+//       req.params.id
+//     } - Request received`
+//   );
+//   try {
+//     const doctorId = req.params.id;
+//     const updateData = req.body;
 
-    // Check if email already exists for another doctor (if email is being updated)
-    if (updateData.email) {
-      const existingEmailDoctor = await Doctor.findOne({
-        email: updateData.email,
-        _id: { $ne: doctorId },
-      });
-      if (existingEmailDoctor) {
-        return res.status(400).json({
-          success: false,
-          message: "Email already exists",
-          errors: [
-            {
-              field: "email",
-              message: "Another doctor with this email already exists",
-            },
-          ],
-        });
-      }
-    }
+//     // Check if email already exists for another doctor (if email is being updated)
+//     if (updateData.email) {
+//       const existingEmailDoctor = await Doctor.findOne({
+//         email: updateData.email,
+//         _id: { $ne: doctorId },
+//       });
+//       if (existingEmailDoctor) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Email already exists",
+//           errors: [
+//             {
+//               field: "email",
+//               message: "Another doctor with this email already exists",
+//             },
+//           ],
+//         });
+//       }
+//     }
 
-    const doctor = await Doctor.findByIdAndUpdate(doctorId, updateData, {
-      new: true,
-      runValidators: true,
-    });
+//     const doctor = await Doctor.findByIdAndUpdate(doctorId, updateData, {
+//       new: true,
+//       runValidators: true,
+//     });
 
-    if (!doctor) {
-      console.warn(
-        `[${new Date().toISOString()}] PUT /api/doctors/${doctorId} - ERROR 404 - Doctor not found`
-      );
-      return res.status(404).json({
-        success: false,
-        message: "Doctor not found",
-      });
-    }
+//     if (!doctor) {
+//       console.warn(
+//         `[${new Date().toISOString()}] PUT /api/doctors/${doctorId} - ERROR 404 - Doctor not found`
+//       );
+//       return res.status(404).json({
+//         success: false,
+//         message: "Doctor not found",
+//       });
+//     }
 
-    console.log(
-      `[${new Date().toISOString()}] PUT /api/doctors/${doctorId} - SUCCESS 200 - Doctor updated: ${
-        doctor.doctorName
-      }`
-    );
+//     console.log(
+//       `[${new Date().toISOString()}] PUT /api/doctors/${doctorId} - SUCCESS 200 - Doctor updated: ${
+//         doctor.doctorName
+//       }`
+//     );
 
-    res.json({
-      success: true,
-      message: "Doctor updated successfully",
-      data: {
-        id: doctor._id,
-        doctorName: doctor.doctorName,
-        employeeId: doctor.employeeId,
-        displayName: doctor.displayName,
-        specialization: doctor.specialization,
-        department: doctor.department,
-        isActive: doctor.isActive,
-        updatedAt: doctor.updatedAt,
-      },
-    });
-  } catch (error) {
-    console.error(
-      `[${new Date().toISOString()}] PUT /api/doctors/${
-        req.params.id
-      } - ERROR 500:`,
-      {
-        message: error.message,
-        stack: error.stack,
-        doctorId: req.params.id,
-        requestBody: req.body,
-      }
-    );
+//     res.json({
+//       success: true,
+//       message: "Doctor updated successfully",
+//       data: {
+//         id: doctor._id,
+//         doctorName: doctor.doctorName,
+//         employeeId: doctor.employeeId,
+//         displayName: doctor.displayName,
+//         specialization: doctor.specialization,
+//         department: doctor.department,
+//         isActive: doctor.isActive,
+//         updatedAt: doctor.updatedAt,
+//       },
+//     });
+//   } catch (error) {
+//     console.error(
+//       `[${new Date().toISOString()}] PUT /api/doctors/${
+//         req.params.id
+//       } - ERROR 500:`,
+//       {
+//         message: error.message,
+//         stack: error.stack,
+//         doctorId: req.params.id,
+//         requestBody: req.body,
+//       }
+//     );
 
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => ({
-        field: err.path,
-        message: err.message,
-      }));
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors,
-      });
-    }
+//     // Handle validation errors
+//     if (error.name === "ValidationError") {
+//       const errors = Object.values(error.errors).map((err) => ({
+//         field: err.path,
+//         message: err.message,
+//       }));
+//       return res.status(400).json({
+//         success: false,
+//         message: "Validation failed",
+//         errors,
+//       });
+//     }
 
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        message: `${field} already exists`,
-        errors: [
-          {
-            field,
-            message: `Another doctor with this ${field} already exists`,
-          },
-        ],
-      });
-    }
+//     // Handle duplicate key error
+//     if (error.code === 11000) {
+//       const field = Object.keys(error.keyPattern)[0];
+//       return res.status(400).json({
+//         success: false,
+//         message: `${field} already exists`,
+//         errors: [
+//           {
+//             field,
+//             message: `Another doctor with this ${field} already exists`,
+//           },
+//         ],
+//       });
+//     }
 
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// });
 
 // DELETE /api/doctors/:id - Delete Doctor (Soft delete by setting isActive to false)
 router.delete("/:id", async (req, res) => {

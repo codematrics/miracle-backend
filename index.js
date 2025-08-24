@@ -12,6 +12,7 @@ const visitRoutes = require("./routes/visit");
 const enumRoutes = require("./routes/enums");
 const opdBillingRoutes = require("./routes/opdBilling");
 const labRoutes = require("./routes/lab");
+const labTestRoutes = require("./routes/labTest");
 const pathologyRoutes = require("./routes/pathology");
 const doctorRoutes = require("./routes/doctor");
 const {
@@ -34,12 +35,11 @@ app.use(
       ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms',
   })
 );
-
 mongoose
-  .connect(
-    process.env.MONGODB_URI || "mongodb://localhost:27017/hospitalmanagement"
-  )
-  .then(() => {
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/miracle", {
+    dbName: "miracle",
+  })
+  .then(async (data) => {
     console.log("Connected to MongoDB");
   })
   .catch((error) => {
@@ -48,6 +48,7 @@ mongoose
   });
 
 app.use("/api/lab", apiLimiter, labRoutes);
+app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/patients", apiLimiter, patientRoutes);
 app.use("/api/parameters", apiLimiter, parametersRoutes);

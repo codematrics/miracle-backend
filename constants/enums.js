@@ -1,64 +1,7 @@
-const RELATION_TYPES = {
-  SON_OF: "S/O",
-  WIFE_OF: "W/O",
-  DAUGHTER_OF: "D/O",
-  OTHER: "Other",
-};
-
 const AGE_UNITS = {
   YEAR: "Year",
   MONTH: "Month",
   DAY: "Day",
-};
-
-const GENDER_TYPES = {
-  MALE: "Male",
-  FEMALE: "Female",
-  OTHER: "Other",
-};
-
-const MARITAL_STATUS = {
-  DIVORCED: "Divorced",
-  MARRIED: "Married",
-  SEPARATED: "Separated",
-  UNMARRIED: "Unmarried",
-  WIDOWED: "Widowed",
-};
-
-const RELIGIONS = {
-  HINDU: "Hindu",
-  BUDDHIST: "Buddhist",
-  CHRISTIAN: "Christian",
-  JAIN: "Jain",
-  MUSLIM: "Muslim",
-  PARSI: "Parsi",
-  SIKH: "Sikh",
-  OTHER: "Other",
-};
-
-const OCCUPATIONS = {
-  SELF_EMPLOYED: "SELF EMPLOYED",
-  GOVT_SERVICE: "GOVT. SERVICE",
-  PVT_SERVICE: "PVT. SERVICE",
-  BUSINESS: "BUSINESS",
-  HOUSE_WORK: "HOUSE WORK",
-  STUDY: "STUDY",
-  UNEMPLOYED: "UN-EMPLOYED",
-  OTHER: "OTHER",
-};
-
-const ID_TYPES = {
-  AADHAR_CARD: "Aadhar Card",
-  PAN_CARD: "Pancard",
-  DRIVING_LICENSE: "Driving license",
-  VOTER_ID: "Voter ID",
-  PASSPORT: "Passport",
-};
-
-const PATIENT_TYPES = {
-  GENERAL: "General",
-  VIP: "VIP",
-  STAFF: "Staff",
 };
 
 const SERVICE_CATEGORIES = {
@@ -117,17 +60,6 @@ const getEnumValues = (enumObject) => Object.values(enumObject);
 
 const getEnumKeys = (enumObject) => Object.keys(enumObject);
 
-const PATIENT_ENUMS = {
-  RELATION_TYPES,
-  AGE_UNITS,
-  GENDER_TYPES,
-  MARITAL_STATUS,
-  RELIGIONS,
-  OCCUPATIONS,
-  ID_TYPES,
-  PATIENT_TYPES,
-};
-
 const SERVICE_ENUMS = {
   SERVICE_CATEGORIES,
   SERVICE_STATUS,
@@ -182,10 +114,147 @@ const CONTAINER_TYPES = {
   OTHER: "other",
 };
 
+// new flow
+
+const ROLES = {
+  ADMIN: "Admin",
+  RECEPTIONIST: "Receptionist",
+  DOCTOR: "Doctor",
+  TECHNICIAN: "Technician",
+};
+
+const REPORT_TYPE = {
+  HAEMATOLOGY: "Haematology",
+  BIOCHEMISTRY: "Biochemistry",
+  SEROLOGY: "Serology",
+  CYTOLOGY: "Cytology",
+  OUTSOURCE: "Outsource",
+  HORMONES_IMMUNOLOGY: "HormonesImmunology",
+  CLINICAL: "Clinical",
+};
+
+const FORMAT_TYPE = {
+  TABULAR: "Tabular",
+  FREESTYLE: "FreeStyle",
+  SELECTIVE: "Selective",
+};
+
+const SAMPLE_TYPE = {
+  SERUM: "Serum",
+  URINE: "Urine",
+  BLOOD: "Blood",
+  FLUIDS: "Fluids",
+  SEMEN: "Semen",
+  TISSUE: "Tissue",
+  STOOL: "Stool",
+  SWAB: "Swab",
+};
+
+const ORDER_TEST_STATUS = {
+  PENDING: "Pending",
+  COLLECTED: "Collected",
+  SAVED: "Saved",
+  AUTHORIZED: "Authorized",
+};
+
+const GENDER = {
+  MALE: "Male",
+  FEMALE: "Female",
+  OTHER: "Other",
+};
+
+const SERVICE_CATEGORY = {
+  PROCEDURE: "Procedure",
+  PATHOLOGY: "Pathology",
+  CONSULTATION: "Consultation",
+  SURGERY: "Surgery",
+  RADIOLOGY: "Radiology",
+  OTHER: "Other",
+};
+
+const SERVICE_APPLICABLE = {
+  OPD: "OPD",
+  IPD: "IPD",
+  BOTH: "Both",
+};
+
+const VISIT_STATUS = {
+  PENDING: "Pending",
+  ACCEPTED: "Accepted",
+  CLOSED: "Closed",
+};
+
+const VISIT_TYPE = {
+  OPD: "OPD",
+  IPD: "IPD",
+  EMERGENCY: "Emergency",
+};
+
+const RELATION_TYPES = {
+  SON_OF: "S/O",
+  WIFE_OF: "W/O",
+  DAUGHTER_OF: "D/O",
+  OTHER: "Other",
+};
+
+const MARITAL_STATUS = {
+  DIVORCED: "Divorced",
+  MARRIED: "Married",
+  SEPARATED: "Separated",
+  UNMARRIED: "Unmarried",
+  WIDOWED: "Widowed",
+};
+
+const RELIGIONS = {
+  HINDU: "Hindu",
+  BUDDHIST: "Buddhist",
+  CHRISTIAN: "Christian",
+  JAIN: "Jain",
+  MUSLIM: "Muslim",
+  PARSI: "Parsi",
+  SIKH: "Sikh",
+  OTHER: "Other",
+};
+
+const OCCUPATIONS = {
+  SELF_EMPLOYED: "SELF EMPLOYED",
+  GOVT_SERVICE: "GOVT. SERVICE",
+  PVT_SERVICE: "PVT. SERVICE",
+  BUSINESS: "BUSINESS",
+  HOUSE_WORK: "HOUSE WORK",
+  STUDY: "STUDY",
+  UNEMPLOYED: "UN-EMPLOYED",
+  OTHER: "OTHER",
+};
+
+const ID_TYPES = {
+  AADHAR_CARD: "Aadhar Card",
+  PAN_CARD: "Pancard",
+  DRIVING_LICENSE: "Driving license",
+  VOTER_ID: "Voter ID",
+  PASSPORT: "Passport",
+};
+
+const PATIENT_TYPES = {
+  GENERAL: "General",
+  VIP: "VIP",
+  STAFF: "Staff",
+};
+
+const PATIENT_ENUMS = {
+  RELATION_TYPES,
+  AGE_UNITS,
+  GENDER,
+  MARITAL_STATUS,
+  RELIGIONS,
+  OCCUPATIONS,
+  ID_TYPES,
+  PATIENT_TYPES,
+};
+
 module.exports = {
   RELATION_TYPES,
   AGE_UNITS,
-  GENDER_TYPES,
   MARITAL_STATUS,
   RELIGIONS,
   OCCUPATIONS,
@@ -204,6 +273,16 @@ module.exports = {
   ORDER_STATUS,
   SAMPLE_TYPES,
   CONTAINER_TYPES,
+  ROLES,
+  REPORT_TYPE,
+  FORMAT_TYPE,
+  SAMPLE_TYPE,
+  ORDER_TEST_STATUS,
+  GENDER,
+  SERVICE_CATEGORY,
+  SERVICE_APPLICABLE,
+  VISIT_STATUS,
+  VISIT_TYPE,
   getEnumValues,
   getEnumKeys,
 };
