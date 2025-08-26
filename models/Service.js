@@ -1,5 +1,10 @@
 const mongoose = require("mongoose");
-const { SERVICE_CATEGORY, SERVICE_APPLICABLE } = require("../constants/enums");
+const {
+  SERVICE_CATEGORY,
+  SERVICE_APPLICABLE,
+  FORMAT_TYPE,
+  SAMPLE_TYPE,
+} = require("../constants/enums");
 
 const serviceSchema = new mongoose.Schema(
   {
@@ -16,6 +21,12 @@ const serviceSchema = new mongoose.Schema(
       enum: Object.values(SERVICE_APPLICABLE),
       required: true,
     },
+    linkedParameters: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LabParameter",
+      },
+    ],
     isOutSource: { type: Boolean, default: true },
     code: { type: String, required: true, unique: true },
     price: { type: Number },

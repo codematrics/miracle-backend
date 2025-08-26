@@ -50,7 +50,7 @@ const createPatientController = async (req, res) => {
   }
 };
 
-const getDropdownPatientsController = async (req, res) => {
+const getPatientDropdownController = async (req, res) => {
   try {
     const { search = "", page = 1, limit = 10 } = req.query;
 
@@ -58,7 +58,7 @@ const getDropdownPatientsController = async (req, res) => {
     const limitNum = parseInt(limit, 10) || 10;
 
     // Build search query
-    const searchRegex = new RegExp(search, "i"); // case-insensitive
+    const searchRegex = new RegExp(search, "i");
     const query = {
       $or: [
         { name: searchRegex },
@@ -74,12 +74,22 @@ const getDropdownPatientsController = async (req, res) => {
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
+    console.log(total, patients);
+
     // Map to dropdown format
     const data = patients.map((p) => ({
-      id: p._id,
-      name: `${p.name} | ${p.relativeName || "-"} | ${
+      value: p._id,
+      label: `${p.name} | ${p.relativeName || "-"} | ${
         p.mobileNumber || "-"
-      } | ${p.uhidNo || "-"}`,
+      } | ${p.uhidNo || "-"} | ${p.age}yrs | ${p.gender}`,
+      name: p.name,
+      uhidNo: p.uhidNo,
+      mobileNumber: p.mobileNumber,
+      age: p.age,
+      gender: p.gender,
+      patientType: p.patientType,
+      relation: p.relation,
+      relativeName: p.relativeName,
     }));
 
     return res.json({
@@ -94,4 +104,4 @@ const getDropdownPatientsController = async (req, res) => {
   }
 };
 
-module.exports = { createPatientController, getDropdownPatientsController };
+module.exports = { createPatientController, getPatientDropdownController };

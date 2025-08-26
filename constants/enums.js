@@ -1,4 +1,5 @@
 const AGE_UNITS = {
+  ALL: "All",
   YEAR: "Year",
   MONTH: "Month",
   DAY: "Day",
@@ -163,6 +164,12 @@ const GENDER = {
   OTHER: "Other",
 };
 
+const GENDER_WITH_ALL = {
+  MALE: "Male",
+  FEMALE: "Female",
+  ALL: "All",
+};
+
 const SERVICE_CATEGORY = {
   PROCEDURE: "Procedure",
   PATHOLOGY: "Pathology",
@@ -283,6 +290,7 @@ module.exports = {
   SERVICE_APPLICABLE,
   VISIT_STATUS,
   VISIT_TYPE,
+  GENDER_WITH_ALL,
   getEnumValues,
   getEnumKeys,
 };

@@ -4,6 +4,8 @@ const {
   createServiceSchema,
   updateServiceSchema,
 } = require("../../validations/serviceSchema");
+const LabParameter = require("../../models/LabParameter");
+const { REPORT_TYPE, SERVICE_APPLICABLE } = require("../../constants/enums");
 
 // Function to generate unique service code
 async function generateServiceCode(category, serviceName) {
@@ -86,6 +88,7 @@ const createServiceController = async (req, res) => {
       .json({ message: "Server error", data: null, status: false });
   }
 };
+
 const updateServiceController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -146,6 +149,65 @@ const deleteServiceController = async (req, res) => {
   }
 };
 
+const getServiceDropdownController = async (req, res) => {
+  try {
+    const {
+      search = "",
+      page = 1,
+      limit = 10,
+      serviceApplicableOn = "",
+    } = req.query;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    // Build search query
+    const searchRegex = new RegExp(search, "i");
+    const query = {
+      $or: [
+        { serviceName: searchRegex },
+        { serviceHead: searchRegex },
+        { headType: searchRegex },
+      ],
+      ...(serviceApplicableOn && {
+        serviceApplicableOn: {
+          $in: [serviceApplicableOn, SERVICE_APPLICABLE.BOTH],
+        },
+      }),
+    };
+
+    const total = await Service.countDocuments(query);
+    const services = await Service.find(query)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    // Map to dropdown format
+    const data = services.map((s) => ({
+      value: s._id,
+      label: `${s.serviceName} | ${s.serviceHead || "-"} | ${
+        s.headType || "-"
+      } | ${s.serviceApplicableOn || "-"} |  Rs. ${s.price || "-"}`,
+      price: s.price,
+      name: s.serviceName,
+      serviceHead: s.serviceHead,
+      headType: s.headType,
+      code: s.code,
+      _id: s._id,
+    }));
+
+    return res.json({
+      data,
+      hasMore: pageNum * limitNum < total,
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Server error", data: null, status: false });
+  }
+};
+
 const listServiceController = async (req, res) => {
   try {
     const {
@@ -189,9 +251,154 @@ const listServiceController = async (req, res) => {
   }
 };
 
+const listParametersWithServiceLinkController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reportType } = req.query;
+
+    if (!Object.values(REPORT_TYPE).includes(reportType)) {
+      return res.status(400).json({
+        message: "report type is required",
+        data: null,
+        status: false,
+      });
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Service ID is required",
+        data: null,
+        status: false,
+      });
+    }
+
+    const service = await Service.findById(id).populate("linkedParameters");
+
+    if (!service) {
+      return res.status(404).json({
+        message: "Service Not Found",
+        data: null,
+        status: false,
+      });
+    }
+
+    const parametersByReport = await LabParameter.find({ reportType });
+
+    // Add isLinked flag
+    let parameterWithFlag = parametersByReport.map((parameter) => ({
+      ...parameter?.toObject(),
+      isLinked:
+        service.linkedParameters?.filter(
+          (p) => p._id?.toString() === parameter._id.toString()
+        ).length === 1,
+    }));
+
+    // Sort linked services first
+    parameterWithFlag.sort((a, b) => {
+      if (a.isLinked === b.isLinked) return 0;
+      return a.isLinked ? -1 : 1;
+    });
+
+    return res.json({
+      message: "linked parameter fetched successfully",
+      data: parameterWithFlag,
+      status: true,
+    });
+  } catch (error) {
+    console.error("Error fetching parameter:", error);
+    return res.status(500).json({
+      message: "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
+const updateServiceLinkedParametersController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { parameterIds, reportType } = req.body;
+
+    // Validation
+    if (!id) {
+      return res.status(400).json({
+        message: "Service ID is required",
+        data: null,
+        status: false,
+      });
+    }
+
+    if (!Object.values(REPORT_TYPE).includes(reportType)) {
+      return res.status(400).json({
+        message: "Invalid report type",
+        data: null,
+        status: false,
+      });
+    }
+
+    if (!Array.isArray(parameterIds)) {
+      return res.status(400).json({
+        message: "parameterIds must be an array",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Find service
+    const service = await Service.findById(id).populate("linkedParameters");
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Validate that all parameterIds exist and match the reportType
+    const validParameters = await LabParameter.find({
+      _id: { $in: parameterIds },
+      reportType,
+    }).select("_id");
+
+    if (validParameters.length !== parameterIds.length) {
+      return res.status(400).json({
+        message:
+          "Some parameterIds are invalid or do not match the report type",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Preserve parameters from other reportTypes
+    const preservedParameterIds = service.linkedParameters
+      .filter((param) => param.reportType !== reportType)
+      .map((param) => param._id);
+
+    // Final list: keep others + replace current reportType's parameters
+    service.linkedParameters = [...preservedParameterIds, ...parameterIds];
+    await service.save();
+
+    return res.json({
+      message: "Linked parameters updated successfully",
+      data: service,
+      status: true,
+    });
+  } catch (error) {
+    console.error("Error updating linked parameters:", error);
+    return res.status(500).json({
+      message: "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
 module.exports = {
   createServiceController,
   updateServiceController,
   deleteServiceController,
   listServiceController,
+  listParametersWithServiceLinkController,
+  updateServiceLinkedParametersController,
+  getServiceDropdownController,
 };

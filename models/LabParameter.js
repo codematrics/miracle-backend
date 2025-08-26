@@ -1,20 +1,45 @@
+const { default: mongoose } = require("mongoose");
+const {
+  REPORT_TYPE,
+  FORMAT_TYPE,
+  SAMPLE_TYPE,
+  GENDER_WITH_ALL,
+} = require("../constants/enums");
+
 const labParameterSchema = new mongoose.Schema(
   {
-    testId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "LabTest",
+    parameterName: { type: String, required: true },
+    reportType: {
+      type: String,
+      enum: Object.values(REPORT_TYPE),
       required: true,
     },
-    parameterName: { type: String, required: true },
+    formatType: {
+      type: String,
+      enum: Object.values(FORMAT_TYPE),
+      required: true,
+    },
+    sampleType: {
+      type: String,
+      enum: Object.values(SAMPLE_TYPE),
+    },
+    isPrintable: { type: Boolean, default: true },
     unit: { type: String },
-    bioReference: { type: String },
-    refMin: { type: Number },
-    refMax: { type: Number },
-    criticalLess: { type: Number },
-    criticalMax: { type: Number },
+    bioReference: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "BioReference",
+      },
+    ],
+    interpretationType: {
+      type: String,
+      enum: Object.values(GENDER_WITH_ALL),
+      required: true,
+    },
     interpretationMale: { type: String },
     interpretationFemale: { type: String },
     interpretationBoth: { type: String },
+    methodology: { type: String },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

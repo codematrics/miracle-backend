@@ -173,9 +173,49 @@ const deleteDoctorController = async (req, res) => {
   }
 };
 
+const getDoctorDropdownController = async (req, res) => {
+  try {
+    const { search = "", page = 1, limit = 10 } = req.query;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    // Build search query
+    const searchRegex = new RegExp(search, "i");
+    const query = {
+      $or: [{ name: searchRegex }],
+    };
+
+    const total = await Doctor.countDocuments(query);
+    const doctors = await Doctor.find(query)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    // Map to dropdown format
+    const data = doctors.map((d) => ({
+      value: d._id,
+      label: `${d.name} | ${d.department || "-"} | ${
+        d.specialization || "-"
+      } | ${d.mobileNo || "-"}`,
+    }));
+
+    return res.json({
+      data,
+      hasMore: pageNum * limitNum < total,
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Server error", data: null, status: false });
+  }
+};
+
 module.exports = {
   createDoctorController,
   listDoctorsController,
   updateDoctorController,
   deleteDoctorController,
+  getDoctorDropdownController,
 };

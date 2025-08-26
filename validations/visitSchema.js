@@ -1,30 +1,5 @@
 const { z } = require("zod");
-const { MEDICOLEGAL_OPTIONS } = require("../models/Visit");
 const { VISIT_TYPE } = require("../constants/enums");
-
-const visitServiceSchema = z.object({
-  serviceId: z
-    .string()
-    .min(1, "Service ID is required")
-    .regex(/^[0-9a-fA-F]{24}$/, "Service ID must be a valid MongoDB ObjectId"),
-
-  serviceName: z
-    .string()
-    .min(1, "Service name is required")
-    .max(100, "Service name too long")
-    .trim(),
-
-  serviceCode: z
-    .string()
-    .min(1, "Service code is required")
-    .max(20, "Service code too long")
-    .trim(),
-
-  rate: z
-    .number()
-    .min(0, "Rate cannot be negative")
-    .max(999999, "Rate too high"),
-});
 
 const createVisitSchema = z.object({
   patientId: z.string().min(1, { message: "Patient ID is required" }),

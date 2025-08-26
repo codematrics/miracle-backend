@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const { VISIT_STATUS, VISIT_TYPE } = require("../constants/enums");
+const { string } = require("zod");
+const { required } = require("zod/mini");
 
 const visitSchema = new mongoose.Schema(
   {
@@ -8,8 +10,9 @@ const visitSchema = new mongoose.Schema(
       ref: "Patient",
       required: true,
     },
+    code: { type: String, required: true },
     visitDate: { type: Date, default: Date.now },
-    doctorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    consultingDoctorId: { type: mongoose.Schema.Types.ObjectId, ref: "Doctor" },
     referredBy: { type: String },
     visitType: { type: String, enum: Object.values(VISIT_TYPE) },
     status: {
@@ -21,6 +24,10 @@ const visitSchema = new mongoose.Schema(
     medicoLegal: { type: Boolean, default: false },
     insuranceType: { type: String },
     policyCardNumber: { type: String },
+    prescription: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Prescription",
+    },
   },
   { timestamps: true }
 );

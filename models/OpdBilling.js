@@ -12,56 +12,45 @@ const ServiceSchema = new mongoose.Schema({
     ref: "Service",
     required: true,
   },
-  serviceName: { type: String, required: true },
-  serviceCode: { type: String, required: true },
-  category: {
-    type: String,
-    enum: SERVICE_CATEGORIES,
-    required: true,
-  },
-  rate: { type: Number, required: true },
+  price: { type: Number, required: true },
   quantity: { type: Number, default: 1 },
   amount: { type: Number, required: true },
 });
 
 const OpdBillingSchema = new mongoose.Schema(
   {
-    billId: { type: String, unique: true, required: true },
-    patientId: {
+    billId: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+    visit: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Visit",
+      required: true,
+    },
+    patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
     },
-    patientInfo: {
-      name: String,
-      age: Number,
-      gender: String,
-      mobileNo: String,
+    consultantDoctor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+      required: true,
     },
-    patientCategory: {
-      type: String,
-      enum: PATIENT_TYPES,
-      default: PATIENT_TYPES.GENERAL,
-    },
-    refby: { type: String },
-    consultantDoctor: { type: String },
-    priority: { type: String, enum: PRIORITY, default: "normal" },
-
     paymentMode: {
       type: String,
       enum: PAYMENT_MODES,
       default: PAYMENT_MODES.CASH,
     },
     paidAmount: { type: Number, default: 0 },
-
     services: [ServiceSchema],
-
     billing: {
       grossAmount: { type: Number, required: true },
       discount: { type: Number, default: 0 },
       netAmount: { type: Number, required: true },
     },
-
     status: {
       type: String,
       enum: ["unpaid", "partially_paid", "paid", "cancelled"],
@@ -73,16 +62,22 @@ const OpdBillingSchema = new mongoose.Schema(
 );
 
 OpdBillingSchema.pre("validate", async function (next) {
-  if (this.isNew && !this.billId) {
-    const lastBill = await this.constructor.findOne().sort({ createdAt: -1 });
-    let newNumber = 1;
+  if (!this.billId) {
+    const lastBill = await mongoose
+      .model("OpdBilling")
+      .findOne()
+      .sort({ createdAt: -1 });
 
-    if (lastBill && lastBill.billId) {
-      const lastNumber = parseInt(lastBill.billId.split("-")[1], 10);
-      newNumber = lastNumber + 1;
+    // Extract last number
+    let lastId = 0;
+    if (lastBill?.billId) {
+      const parts = lastBill.billId.split("-");
+      if (parts.length === 2 && !isNaN(parts[1])) {
+        lastId = parseInt(parts[1], 10);
+      }
     }
 
-    this.billId = `OPD-${String(newNumber).padStart(5, "0")}`;
+    this.billId = `BILL-${lastId + 1}`;
   }
   next();
 });

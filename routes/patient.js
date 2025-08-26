@@ -10,7 +10,7 @@ const {
 const { paginate, buildSearchQuery } = require("../lib/pagination");
 const {
   createPatientController,
-  getDropdownPatientsController,
+  getPatientDropdownController,
 } = require("../controllers/patient/patient");
 
 const router = express.Router();
@@ -60,52 +60,54 @@ router.get("/", validate(patientQuerySchema, "query"), async (req, res) => {
   }
 });
 
-router.get(
-  "/dropdown-data",
-  validate(patientQuerySchema, "query"),
-  async (req, res) => {
-    console.log(
-      `[${new Date().toISOString()}] GET /api/patients/dropdown-data - Request received`
-    );
-    try {
-      const patients = await Patient.find()
-        .select(
-          "_id patientName fatherOrHusbandName uhid mobileNo age ageUnit gender patientType"
-        ) // only needed fields
-        .lean();
+// router.get(
+//   "/dropdown-data",
+//   validate(patientQuerySchema, "query"),
+//   async (req, res) => {
+//     console.log(
+//       `[${new Date().toISOString()}] GET /api/patients/dropdown-data - Request received`
+//     );
+//     try {
+//       const patients = await Patient.find()
+//         .select(
+//           "_id patientName fatherOrHusbandName uhid mobileNo age ageUnit gender patientType"
+//         ) // only needed fields
+//         .lean();
 
-      const patientList = patients.map((p) => ({
-        id: p._id.toString(),
-        label: p.patientName,
-        fathername: p.fatherOrHusbandName,
-        uhid: p.uhid,
-        UHID: p.uhid,
-        mobileno: p.mobileNo,
-        age: p.age,
-        patientType: p.patientType,
-        gender:
-          p.gender === "Male" ? "M" : p.gender === "Female" ? "F" : p.gender,
-      }));
+//       const patientList = patients.map((p) => ({
+//         id: p._id.toString(),
+//         label: p.patientName,
+//         fathername: p.fatherOrHusbandName,
+//         uhid: p.uhid,
+//         UHID: p.uhid,
+//         mobileno: p.mobileNo,
+//         age: p.age,
+//         patientType: p.patientType,
+//         gender:
+//           p.gender === "Male" ? "M" : p.gender === "Female" ? "F" : p.gender,
+//       }));
 
-      res.json({
-        success: true,
-        data: patientList,
-      });
-    } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] GET /api/patients - ERROR 500:`,
-        {
-          message: error.message,
-          stack: error.stack,
-        }
-      );
-      res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
-  }
-);
+//       res.json({
+//         success: true,
+//         data: patientList,
+//       });
+//     } catch (error) {
+//       console.error(
+//         `[${new Date().toISOString()}] GET /api/patients - ERROR 500:`,
+//         {
+//           message: error.message,
+//           stack: error.stack,
+//         }
+//       );
+//       res.status(500).json({
+//         success: false,
+//         message: error.message,
+//       });
+//     }
+//   }
+// );
+
+router.get("/dropdown-list", getPatientDropdownController);
 
 router.get("/:id", async (req, res) => {
   console.log(
@@ -204,7 +206,6 @@ router.get("/:id", async (req, res) => {
 // });
 
 router.post("/", createPatientController);
-router.get("/dropdown-list", getDropdownPatientsController);
 
 // GET /api/patients/:uhid/details - Get Comprehensive Patient Details
 router.get("/:uhid/details", async (req, res) => {
