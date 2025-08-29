@@ -1,5 +1,6 @@
 const LabOrderTest = require("../../models/LabOrderTest");
 const LabResult = require("../../models/LabResult");
+const RadiologyReport = require("../../models/RadioLogyReport");
 const PdfPrinter = require("pdfmake");
 const path = require("path");
 
@@ -1965,6 +1966,575 @@ const printLabTestOrder = async (req, res) => {
   }
 };
 
+// Get linked template for a specific lab test order
+const getLabTestOrderTemplate = async (req, res) => {
+  try {
+    const { labTestOrderId } = req.params;
+
+    if (!labTestOrderId) {
+      return res.status(400).json({
+        message: "Lab test order ID is required",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Find the lab test order and populate service with linkedTemplate
+    const labTestOrder = await LabOrderTest.findById(labTestOrderId)
+      .populate({
+        path: "serviceId",
+        populate: {
+          path: "linkedTemplate",
+          model: "RadiologyTemplate",
+          select: "templateName templateContent description isActive createdBy updatedBy",
+          populate: [
+            { path: "createdBy", select: "name" },
+            { path: "updatedBy", select: "name" }
+          ]
+        }
+      });
+
+    if (!labTestOrder) {
+      return res.status(404).json({
+        message: "Lab test order not found",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Check if service has a linked template
+    const template = labTestOrder.serviceId?.linkedTemplate;
+    
+    if (!template) {
+      return res.json({
+        message: "No template linked to this lab test order",
+        data: {
+          labTestOrderId: labTestOrder._id,
+          service: {
+            _id: labTestOrder.serviceId?._id,
+            serviceName: labTestOrder.serviceId?.serviceName,
+            headType: labTestOrder.serviceId?.headType,
+          },
+          template: null,
+        },
+        status: true,
+      });
+    }
+
+    return res.json({
+      message: "Template for lab test order fetched successfully",
+      data: {
+        labTestOrderId: labTestOrder._id,
+        service: {
+          _id: labTestOrder.serviceId._id,
+          serviceName: labTestOrder.serviceId.serviceName,
+          code: labTestOrder.serviceId.code,
+          headType: labTestOrder.serviceId.headType,
+        },
+        template: {
+          _id: template._id,
+          templateName: template.templateName,
+          templateContent: template.templateContent,
+          description: template.description,
+          isActive: template.isActive,
+          createdBy: template.createdBy,
+          updatedBy: template.updatedBy,
+        },
+      },
+      status: true,
+    });
+  } catch (error) {
+    console.error("Error fetching template for lab test order:", error);
+    return res.status(500).json({
+      message: "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
+// Save radiology template result and authorize
+const saveRadiologyTemplateResult = async (req, res) => {
+  try {
+    const { labTestOrderId, templateContent, findings, impression, methodology, userId } = req.body;
+
+    if (!labTestOrderId || !templateContent) {
+      return res.status(400).json({
+        message: "Lab test order ID and template content are required",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Find the lab test order and validate
+    const labTestOrder = await LabOrderTest.findById(labTestOrderId)
+      .populate({
+        path: "serviceId",
+        populate: {
+          path: "linkedTemplate",
+          model: "RadiologyTemplate"
+        }
+      });
+
+    if (!labTestOrder) {
+      return res.status(404).json({
+        message: "Lab test order not found",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Validate it's a radiology service with linked template
+    if (labTestOrder.serviceId?.headType !== "Radiology") {
+      return res.status(400).json({
+        message: "Lab test order must be for a Radiology service",
+        data: null,
+        status: false,
+      });
+    }
+
+    if (!labTestOrder.serviceId?.linkedTemplate) {
+      return res.status(400).json({
+        message: "No template linked to this radiology service",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Check if report already exists, update if it does, create if it doesn't
+    let radiologyReport = await RadiologyReport.findOne({
+      orderTestId: labTestOrderId
+    });
+
+    if (radiologyReport) {
+      // Update existing report
+      radiologyReport.templateUsedId = labTestOrder.serviceId.linkedTemplate._id;
+      radiologyReport.findings = findings || "";
+      radiologyReport.impression = impression || "";
+      radiologyReport.methodology = methodology || "";
+      radiologyReport.authorizedBy = userId;
+      radiologyReport.authorizedAt = new Date();
+      await radiologyReport.save();
+    } else {
+      // Create new report
+      radiologyReport = new RadiologyReport({
+        orderTestId: labTestOrderId,
+        templateUsedId: labTestOrder.serviceId.linkedTemplate._id,
+        findings: findings || "",
+        impression: impression || "",
+        methodology: methodology || "",
+        authorizedBy: userId,
+        authorizedAt: new Date(),
+      });
+      await radiologyReport.save();
+    }
+
+    // Update lab test order status to authorized
+    labTestOrder.status = "authorized";
+    labTestOrder.authorizedBy = userId;
+    labTestOrder.authorizedAt = new Date();
+    await labTestOrder.save();
+
+    return res.json({
+      message: "Radiology report saved and authorized successfully",
+      data: {
+        labTestOrderId,
+        reportId: radiologyReport._id,
+        status: "authorized",
+        templateUsed: {
+          _id: labTestOrder.serviceId.linkedTemplate._id,
+          templateName: labTestOrder.serviceId.linkedTemplate.templateName,
+        },
+        findings: radiologyReport.findings,
+        impression: radiologyReport.impression,
+        methodology: radiologyReport.methodology,
+        authorizedAt: radiologyReport.authorizedAt,
+      },
+      status: true,
+    });
+  } catch (error) {
+    console.error("Error saving radiology template result:", error);
+    return res.status(500).json({
+      message: "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
+// Print radiology report
+const printRadiologyReport = async (req, res) => {
+  try {
+    const { labTestOrderId } = req.query;
+
+    if (!labTestOrderId) {
+      return res.status(400).json({
+        message: "Lab test order ID is required",
+        status: false,
+      });
+    }
+
+    // Find lab test order with all necessary data
+    const labTestOrder = await LabOrderTest.findById(labTestOrderId)
+      .populate({
+        path: "serviceId",
+        populate: {
+          path: "linkedTemplate",
+          model: "RadiologyTemplate",
+        }
+      })
+      .populate({
+        path: "labOrderId",
+        populate: [
+          {
+            path: "patient",
+            model: "Patient",
+          },
+          {
+            path: "visit",
+            model: "Visit",
+            populate: {
+              path: "consultingDoctorId",
+              model: "Doctor",
+            },
+          },
+        ],
+      });
+
+    if (!labTestOrder) {
+      return res.status(404).json({
+        message: "Lab test order not found",
+        status: false,
+      });
+    }
+
+    // Check if it's authorized
+    if (labTestOrder.status !== "authorized") {
+      return res.status(400).json({
+        message: "Lab test order must be authorized to print report",
+        status: false,
+      });
+    }
+
+    // Get radiology report
+    const radiologyReport = await RadiologyReport.findOne({
+      orderTestId: labTestOrderId
+    }).populate("authorizedBy", "name");
+
+    if (!radiologyReport) {
+      return res.status(404).json({
+        message: "Radiology report not found",
+        status: false,
+      });
+    }
+
+    const patient = labTestOrder.labOrderId?.patient;
+    const visit = labTestOrder.labOrderId?.visit;
+    const doctor = visit?.consultingDoctorId;
+    const template = labTestOrder.serviceId?.linkedTemplate;
+
+    // --- PDF Setup ---
+    const fonts = {
+      Roboto: {
+        normal: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Regular.ttf"
+        ),
+        bold: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Medium.ttf"
+        ),
+        italics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Italic.ttf"
+        ),
+        bolditalics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-MediumItalic.ttf"
+        ),
+      },
+    };
+    const printer = new PdfPrinter(fonts);
+
+    // Prepare radiology report data
+    const reportData = {
+      UHID: patient?.uhidNo || patient?.patientId || "N/A",
+      visitNo: visit?.code || visit?._id || "N/A",
+      testDate: labTestOrder.createdAt.toDateString(),
+      reportDate: radiologyReport.authorizedAt?.toDateString() || "N/A",
+      patientName: patient?.name || "N/A",
+      age: patient?.age || "N/A",
+      gender: patient?.gender || "N/A",
+      mobile: patient?.contactNumber || "N/A",
+      address: patient?.address || "N/A",
+      doctorName: doctor?.name || "N/A",
+      qualification: doctor?.qualification || "N/A",
+      serviceName: labTestOrder.serviceId?.serviceName,
+      serviceCode: labTestOrder.serviceId?.code,
+      templateName: template?.templateName,
+      findings: radiologyReport.findings || "Not specified",
+      impression: radiologyReport.impression || "Not specified",
+      methodology: radiologyReport.methodology || "Not specified",
+      authorizedBy: radiologyReport.authorizedBy?.name || "Lab Technician",
+    };
+
+    // --- PDF Definition ---
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 40],
+      content: [
+        // Header Image
+        {
+          image: path.join(__dirname, "../../assets/header_prescription.jpg"),
+          width: 480,
+          alignment: "center",
+        },
+        { text: "\n" },
+
+        // Report Title
+        {
+          text: "RADIOLOGY REPORT",
+          style: "reportTitle",
+          alignment: "center",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Patient Info Section
+        {
+          columns: [
+            {
+              width: "50%",
+              stack: [
+                {
+                  text: "PATIENT INFORMATION",
+                  style: "sectionHeader",
+                  margin: [0, 0, 0, 8],
+                },
+                {
+                  text: [
+                    { text: "UHID: ", style: "labelBold" },
+                    { text: reportData.UHID, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Patient Name: ", style: "labelBold" },
+                    { text: reportData.patientName, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Age/Gender: ", style: "labelBold" },
+                    {
+                      text: `${reportData.age} / ${reportData.gender}`,
+                      style: "normalText",
+                    },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Mobile: ", style: "labelBold" },
+                    { text: reportData.mobile, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+              ],
+            },
+            {
+              width: "50%",
+              stack: [
+                {
+                  text: "EXAMINATION DETAILS",
+                  style: "sectionHeader",
+                  margin: [0, 0, 0, 8],
+                },
+                {
+                  text: [
+                    { text: "Visit No: ", style: "labelBold" },
+                    { text: reportData.visitNo, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Examination: ", style: "labelBold" },
+                    { text: reportData.serviceName, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Test Date: ", style: "labelBold" },
+                    { text: reportData.testDate, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+                {
+                  text: [
+                    { text: "Report Date: ", style: "labelBold" },
+                    { text: reportData.reportDate, style: "normalText" },
+                  ],
+                  margin: [0, 0, 0, 4],
+                },
+              ],
+            },
+          ],
+          margin: [0, 0, 0, 25],
+        },
+
+        // Methodology Section
+        {
+          text: "METHODOLOGY:",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 10],
+        },
+        {
+          text: reportData.methodology,
+          style: "contentText",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Findings Section
+        {
+          text: "FINDINGS:",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 10],
+        },
+        {
+          text: reportData.findings,
+          style: "contentText",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Impression Section
+        {
+          text: "IMPRESSION:",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 10],
+        },
+        {
+          text: reportData.impression,
+          style: "contentText",
+          margin: [0, 0, 0, 30],
+        },
+
+        // Doctor Section
+        {
+          columns: [
+            { width: "50%", text: "" }, // Empty left column
+            {
+              width: "50%",
+              stack: [
+                {
+                  text: "Dr. " + reportData.authorizedBy,
+                  style: "doctorName",
+                  alignment: "center",
+                },
+                {
+                  text: reportData.qualification || "Consultant Radiologist",
+                  style: "doctorQualification",
+                  alignment: "center",
+                  margin: [0, 5, 0, 0],
+                },
+                {
+                  text: "Authorized Signatory",
+                  style: "doctorTitle",
+                  alignment: "center",
+                  margin: [0, 20, 0, 0],
+                },
+              ],
+            },
+          ],
+          margin: [0, 30, 0, 0],
+        },
+
+        // Footer
+        {
+          text: `Report generated on: ${new Date().toLocaleString()}`,
+          style: "footer",
+          alignment: "center",
+          margin: [0, 40, 0, 0],
+        },
+      ],
+
+      styles: {
+        reportTitle: {
+          fontSize: 18,
+          bold: true,
+          color: "#341f62",
+        },
+        sectionHeader: {
+          fontSize: 12,
+          bold: true,
+          color: "#341f62",
+          decoration: "underline",
+        },
+        labelBold: {
+          fontSize: 10,
+          bold: true,
+          color: "#333333",
+        },
+        normalText: {
+          fontSize: 10,
+          color: "#555555",
+        },
+        contentText: {
+          fontSize: 11,
+          color: "#333333",
+          lineHeight: 1.3,
+        },
+        doctorName: {
+          fontSize: 12,
+          bold: true,
+          color: "#341f62",
+        },
+        doctorQualification: {
+          fontSize: 10,
+          color: "#666666",
+        },
+        doctorTitle: {
+          fontSize: 9,
+          color: "#888888",
+          italics: true,
+        },
+        footer: {
+          fontSize: 9,
+          color: "#777777",
+          italics: true,
+        },
+      },
+
+      defaultStyle: {
+        fontSize: 10,
+        font: "Roboto",
+      },
+    };
+
+    // Generate PDF
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+    // Set response headers for PDF
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=radiology-report-${labTestOrderId}.pdf`,
+    });
+
+    // Stream PDF to response
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    console.error("Error printing radiology report:", error);
+    return res.status(500).json({
+      message: "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
 module.exports = {
   listLabTestController,
   getLabOrderParametersGroupedBySampleType,
@@ -1979,4 +2549,7 @@ module.exports = {
   printLabTestOrder,
   saveLabTestResults,
   saveAndAuthorizeLabTestResults,
+  getLabTestOrderTemplate,
+  saveRadiologyTemplateResult,
+  printRadiologyReport,
 };

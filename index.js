@@ -18,6 +18,7 @@ const PrescriptionRoutes = require("./routes/prescription");
 const labTestRoutes = require("./routes/labTest");
 const pathologyRoutes = require("./routes/pathology");
 const doctorRoutes = require("./routes/doctor");
+const radiologyTemplateRoutes = require("./routes/radiologyTemplate");
 const {
   securityMiddleware,
   authLimiter,
@@ -63,6 +64,7 @@ app.use("/api/visits", apiLimiter, visitRoutes);
 app.use("/api/opd-billing", apiLimiter, opdBillingRoutes);
 app.use("/api/pathology", apiLimiter, pathologyRoutes);
 app.use("/api/doctors", apiLimiter, doctorRoutes);
+app.use("/api/radiology-template", apiLimiter, radiologyTemplateRoutes);
 app.use("/api/enums", enumRoutes);
 
 app.get("/", (req, res) => {

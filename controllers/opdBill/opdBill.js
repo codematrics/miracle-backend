@@ -71,11 +71,12 @@ exports.createOPDBill = async (req, res) => {
 
     await opdBill.save();
 
-    const pathologyServices = services.filter(
-      (s) => s.headType === SERVICE_CATEGORY.PATHOLOGY
+    // Filter services that require lab order tests (Pathology and Radiology)
+    const labServices = services.filter(
+      (s) => s.headType === SERVICE_CATEGORY.PATHOLOGY || s.headType === SERVICE_CATEGORY.RADIOLOGY
     );
 
-    if (pathologyServices.length) {
+    if (labServices.length) {
       const labOrder = await LabOrder.create({
         patient: patient._id,
         visit: visit._id,
@@ -83,8 +84,8 @@ exports.createOPDBill = async (req, res) => {
         doctor: doctor._id,
       });
 
-      for (let index = 0; index < pathologyServices.length; index++) {
-        const service = pathologyServices[index];
+      for (let index = 0; index < labServices.length; index++) {
+        const service = labServices[index];
 
         await LabOrderTest.create({
           labOrderId: labOrder._id,

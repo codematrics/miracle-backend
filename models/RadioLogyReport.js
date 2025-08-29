@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const radiologyReportSchema = new mongoose.Schema(
   {
     orderTestId: {

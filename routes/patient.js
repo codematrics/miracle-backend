@@ -207,7 +207,7 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", createPatientController);
 
-// GET /api/patients/:uhid/details - Get Comprehensive Patient Details
+// GET /api/patients/:uhid/details - Get Patient Details with Visit History
 router.get("/:uhid/details", async (req, res) => {
   console.log(
     `[${new Date().toISOString()}] GET /api/patients/${
@@ -218,7 +218,7 @@ router.get("/:uhid/details", async (req, res) => {
     const { uhid } = req.params;
 
     // Find patient by UHID
-    const patient = await Patient.findOne({ uhid }).lean();
+    const patient = await Patient.findOne({ uhidNo: uhid }).lean();
     if (!patient) {
       console.warn(
         `[${new Date().toISOString()}] GET /api/patients/${uhid}/details - ERROR 404 - Patient not found`
@@ -236,36 +236,17 @@ router.get("/:uhid/details", async (req, res) => {
       {
         $lookup: {
           from: "doctors",
-          let: { doctorName: "$visitingdoctor" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $eq: ["$doctorName", "$$doctorName"],
-                },
-              },
-            },
-          ],
+          localField: "consultingDoctorId",
+          foreignField: "_id",
           as: "doctorDetails",
         },
       },
       {
         $project: {
-          visitId: 1,
+          code: 1,
           visitDate: 1,
-          visitingdoctor: 1,
-          visittype: 1,
-          refby: 1,
-          chiefComplaint: 1,
-          vitals: 1,
-          diagnosis: 1,
-          pastHistory: 1,
-          allergies: 1,
-          investigation: 1,
-          advice: 1,
-          medications: 1,
-          services: 1,
-          totalAmount: 1,
+          visitType: 1,
+          referredBy: 1,
           status: 1,
           createdAt: 1,
           doctorInfo: { $arrayElemAt: ["$doctorDetails", 0] },
@@ -278,52 +259,47 @@ router.get("/:uhid/details", async (req, res) => {
     const previousVisits = visits.slice(1); // All visits except the most recent
 
     // Format patient address
-    const address = patient.address
-      ? `${patient.address.village}, ${patient.address.district}, ${patient.address.state}`
-          .replace(/,\s*,/g, ",")
-          .replace(/^,|,$/g, "")
-      : "";
+    const addressParts = [];
+    if (patient.address) {
+      if (patient.address.street) addressParts.push(patient.address.street);
+      if (patient.address.city) addressParts.push(patient.address.city);
+      if (patient.address.district) addressParts.push(patient.address.district);
+      if (patient.address.state) addressParts.push(patient.address.state);
+    }
+    const address = addressParts.join(", ") || "Not provided";
 
     // Format patient name with relation
-    const patientName = `${patient.patientName} ${patient.relation} ${patient.fatherOrHusbandName}`;
+    const patientName = `${patient.name} ${patient.relation} ${patient.relativeName || ""}`.trim();
 
     // Format age and gender
-    const ageGender = `${patient.age} ${patient.ageUnit} / ${patient.gender
-      .charAt(0)
-      .toUpperCase()}`;
+    const ageGender = `${patient.age || "N/A"} Year / ${patient.gender?.charAt(0)?.toUpperCase() || "N/A"}`;
 
     // Prepare response
     const patientDetails = {
-      uhid: patient.uhid,
+      uhid: patient.uhidNo,
       patientName: patientName,
-      mobileNo: patient.mobileNo,
+      mobileNo: patient.mobileNumber || "Not provided",
       ageGender: ageGender,
       address: address,
       recentVisit: recentVisit
         ? {
-            visitNo: recentVisit.visitId,
+            visitNo: recentVisit.code,
             visitDate: recentVisit.visitDate,
-            doctorName: recentVisit.visitingdoctor,
-            licenseNo: recentVisit.doctorInfo?.licenseNo || "N/A",
-            specialization: recentVisit.doctorInfo?.qualification || "N/A",
-            department:
-              recentVisit.doctorInfo?.department || "General Medicine",
-            chiefComplaint: recentVisit.chiefComplaint || "N/A",
-            vitals: recentVisit.vitals || {},
-            diagnosis: recentVisit.diagnosis || {},
-            pastHistory: recentVisit.pastHistory || "N/A",
-            allergies: recentVisit.allergies || "None",
-            investigation: recentVisit.investigation || "N/A",
-            advice: recentVisit.advice || "N/A",
-            medications: recentVisit.medications || [],
+            visitType: recentVisit.visitType,
+            doctorName: recentVisit.doctorInfo?.name || "Not assigned",
+            doctorQualification: recentVisit.doctorInfo?.qualification || "Not provided",
+            referredBy: recentVisit.referredBy || "Direct",
+            status: recentVisit.status,
           }
         : null,
       previousVisits: previousVisits.map((visit, index) => ({
         serialNo: index + 1,
-        visitNo: visit.visitId,
+        visitNo: visit.code,
         visitDate: visit.visitDate,
-        doctorName: visit.visitingdoctor,
-        advice: visit.advice || "N/A",
+        visitType: visit.visitType,
+        doctorName: visit.doctorInfo?.name || "Not assigned",
+        referredBy: visit.referredBy || "Direct",
+        status: visit.status,
       })),
     };
 

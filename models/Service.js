@@ -27,6 +27,10 @@ const serviceSchema = new mongoose.Schema(
         ref: "LabParameter",
       },
     ],
+    linkedTemplate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RadiologyTemplate",
+    },
     isOutSource: { type: Boolean, default: true },
     code: { type: String, required: true, unique: true },
     price: { type: Number },

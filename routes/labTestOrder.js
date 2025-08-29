@@ -12,6 +12,9 @@ const {
   saveAndAuthorizeLabTestResults,
   getLabOrderTestReportTypes,
   printLabTestOrder,
+  getLabTestOrderTemplate,
+  saveRadiologyTemplateResult,
+  printRadiologyReport,
 } = require("../controllers/labTestOrder/LabTestOrder");
 const {
   listParametersWithServiceLinkController,
@@ -33,6 +36,15 @@ router.get(
   "/:labOrderId/grouped-by-sample",
   getLabOrderParametersGroupedBySampleType
 );
+
+// GET /api/lab-test-orders/:labTestOrderId/template - Get linked template for a specific lab test order
+router.get("/:labTestOrderId/template", getLabTestOrderTemplate);
+
+// POST /api/lab-test-orders/save-radiology-result - Save radiology template result and authorize
+router.post("/save-radiology-result", saveRadiologyTemplateResult);
+
+// GET /api/lab-test-orders/print-radiology - Print radiology report
+router.get("/print-radiology", printRadiologyReport);
 
 // router.get("/linking/:id", listServicesWithLabTestLinkController);
 // router.put("/linking/:id", updateLabTestLinkedServicesController);
