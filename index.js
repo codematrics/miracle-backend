@@ -44,11 +44,9 @@ const corsOptions = {
       callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true, // needed if using cookies or Authorization headers
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // handle preflight
 
 // ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
