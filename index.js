@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const morgan = require("morgan");
 require("dotenv").config();
+const serverless = require("serverless-http");
 
 const authRoutes = require("./routes/auth");
 const patientRoutes = require("./routes/patient");
@@ -121,3 +122,6 @@ mongoose
     console.error("❌ MongoDB connection error:", error.message);
     process.exit(1);
   });
+
+module.exports = app;
+module.exports.handler = serverless(app);
