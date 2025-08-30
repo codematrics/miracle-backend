@@ -28,27 +28,12 @@ const {
 
 const app = express();
 app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  console.log("🌐 Incoming request from origin:", req.headers.origin);
+  next();
+});
 
-// ✅ Configure CORS
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://miracle-staging-web.vercel.app", // deployed frontend
-  "https://miracle-frontend-gamma.vercel.app",
-];
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    // allow REST tools or server-to-server with no origin
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-};
-
-app.use(cors(corsOptions));
-
+app.use(cors({ origin: "*" }));
 // ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
