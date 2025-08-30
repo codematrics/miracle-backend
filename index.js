@@ -39,18 +39,8 @@ app.use(
       ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms',
   })
 );
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/miracle", {
-    dbName: "miracle",
-  })
-  .then(async (data) => {
-    console.log("Connected to MongoDB");
-  })
-  .catch((error) => {
-    console.error("MongoDB connection error:", process.env.MONGODB_URI, error);
-    process.exit(1);
-  });
 
+// Routes
 app.use("/api/lab", apiLimiter, labRoutes);
 app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
@@ -71,6 +61,7 @@ app.get("/", (req, res) => {
   res.json({ message: "Hospital Management System API" });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(
     `[${new Date().toISOString()}] ERROR: ${req.method} ${req.path}`
@@ -92,6 +83,19 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+// Connect to MongoDB first, then start server
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/miracle", {
+    dbName: "miracle",
+  })
+  .then(() => {
+    console.log("✅ Connected to MongoDB");
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("❌ MongoDB connection error:", error.message);
+    process.exit(1); // Exit so server doesn’t run
+  });
