@@ -9,6 +9,7 @@ const {
   OCCUPATIONS,
   ID_TYPES,
   PATIENT_TYPES,
+  GENDER,
 } = require("../constants/enums");
 
 const addressSchema = z.object({
@@ -33,84 +34,34 @@ const addressSchema = z.object({
 });
 
 const createPatientSchema = z.object({
-  patientName: z
-    .string()
-    .min(1, "Patient name is required")
-    .max(100, "Patient name too long")
-    .regex(
-      /^[a-zA-Z\s\.]+$/,
-      "Patient name should only contain letters, spaces, and dots"
-    ),
+  name: z.string().min(1, { message: "Patient name is required" }),
+  gender: z.enum(["Male", "Female", "Other"]),
+  dob: z.string().optional(), // ISO date string
+  age: z.number().optional(),
+  patientCategory: z.string().optional(),
+  mobileNumber: z.string().optional(),
 
-  relation: z.enum(RELATION_TYPES, {
-    errorMap: () => ({
-      message: "Relation must be one of: S/O, W/O, D/O, Other",
-    }),
-  }),
+  relation: z.enum(RELATION_TYPES),
+  relativeName: z.string(),
+  maritalStatus: z.enum(MARITAL_STATUS).optional(),
+  religion: z.enum(RELIGIONS).optional(),
+  occupation: z.string().optional(),
+  email: z.string().email({ message: "Invalid email" }).optional(),
+  idType: z.enum(ID_TYPES).optional(),
+  idNo: z.string().optional(),
 
-  fatherOrHusbandName: z
-    .string()
-    .min(1, "Father/Husband name is required")
-    .max(100, "Father/Husband name too long")
-    .regex(
-      /^[a-zA-Z\s\.]+$/,
-      "Father/Husband name should only contain letters, spaces, and dots"
-    ),
-
-  age: z
-    .number()
-    .int("Age must be an integer")
-    .min(0, "Age cannot be negative")
-    .max(150, "Age seems unrealistic"),
-
-  ageUnit: z.enum(AGE_UNITS, {
-    errorMap: () => ({
-      message: "Age unit must be one of: Year, Month, Day",
-    }),
-  }),
-
-  gender: z.enum(GENDER_TYPES, {
-    errorMap: () => ({
-      message: "Gender must be one of: Male, Female, Other",
-    }),
-  }),
-
-  maritalStatus: z.enum(MARITAL_STATUS).optional().nullable().or(z.literal("")),
-
-  religion: z.enum(RELIGIONS).optional().nullable().or(z.literal("")),
-
-  occupation: z.enum(OCCUPATIONS).optional().nullable().or(z.literal("")),
-
-  mobileNo: z
-    .string()
-    .regex(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
-
-  emailId: z
-    .string()
-    .email("Invalid email format")
-    .optional()
-    .nullable()
-    .or(z.literal("")),
-
-  idType: z.enum(ID_TYPES, {
-    errorMap: () => ({
-      message:
-        "ID type must be one of: Aadhar Card, Pancard, Driving license, Voter ID, Passport",
-    }),
-  }),
-
-  idNo: z
-    .string()
-    .min(1, "ID number is required")
-    .max(20, "ID number too long")
-    .regex(
-      /^[A-Za-z0-9]+$/,
-      "ID number should only contain letters and numbers"
-    ),
-
-  patientType: z.enum(PATIENT_TYPES).default("General"),
-
-  address: addressSchema,
+  address: z
+    .object({
+      street: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      district: z.string().optional(),
+      tehsil: z.string().optional(),
+      post: z.string().optional(),
+      pincode: z.string().optional(),
+      country: z.string().optional(),
+    })
+    .optional(),
 });
 
 const updatePatientSchema = createPatientSchema.partial();

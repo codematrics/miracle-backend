@@ -17,6 +17,7 @@ const {
 } = require("../lib/pagination");
 const LabOrder = require("../models/LabOrder");
 const { ORDER_STATUS } = require("../constants/enums");
+const { createOPDBill } = require("../controllers/opdBill/opdBill");
 
 const router = express.Router();
 
@@ -230,196 +231,198 @@ function calculateBilling(data) {
 }
 
 // POST /api/opd-billing - Create New OPD Bill
-router.post("/", validate(createOpdBillingSchema), async (req, res) => {
-  console.log(
-    `[${new Date().toISOString()}] POST /api/opd-billing - Request received`
-  );
-  try {
-    const billData = calculateBilling(req.body);
+// router.post("/", validate(createOpdBillingSchema), async (req, res) => {
+//   console.log(
+//     `[${new Date().toISOString()}] POST /api/opd-billing - Request received`
+//   );
+//   try {
+//     const billData = calculateBilling(req.body);
 
-    // Validate patient exists
-    if (billData.patientId) {
-      const patient = await Patient.findById(billData.patientId);
-      if (!patient) {
-        return res.status(404).json({
-          success: false,
-          message: "Patient not found",
-          errors: [
-            {
-              field: "patientId",
-              message: "Patient with this ID does not exist",
-            },
-          ],
-        });
-      }
-    }
+//     // Validate patient exists
+//     if (billData.patientId) {
+//       const patient = await Patient.findById(billData.patientId);
+//       if (!patient) {
+//         return res.status(404).json({
+//           success: false,
+//           message: "Patient not found",
+//           errors: [
+//             {
+//               field: "patientId",
+//               message: "Patient with this ID does not exist",
+//             },
+//           ],
+//         });
+//       }
+//     }
 
-    // Validate doctor exists and get doctor information
-    const doctor = await Doctor.findOne({ employeeId: billData.doctorId, isActive: true });
-    if (!doctor) {
-      console.warn(
-        `[${new Date().toISOString()}] POST /api/opd-billing - ERROR 404 - Doctor not found: ${
-          billData.doctorId
-        }`
-      );
-      return res.status(404).json({
-        success: false,
-        message: "Doctor not found",
-        errors: [
-          {
-            field: "doctorId",
-            message: "Doctor with this Employee ID does not exist or is inactive",
-          },
-        ],
-      });
-    }
+//     // Validate doctor exists and get doctor information
+//     const doctor = await Doctor.findOne({ employeeId: billData.doctorId, isActive: true });
+//     if (!doctor) {
+//       console.warn(
+//         `[${new Date().toISOString()}] POST /api/opd-billing - ERROR 404 - Doctor not found: ${
+//           billData.doctorId
+//         }`
+//       );
+//       return res.status(404).json({
+//         success: false,
+//         message: "Doctor not found",
+//         errors: [
+//           {
+//             field: "doctorId",
+//             message: "Doctor with this Employee ID does not exist or is inactive",
+//           },
+//         ],
+//       });
+//     }
 
-    // Replace doctorId with consultantDoctor name
-    billData.consultantDoctor = doctor.doctorName;
-    billData.doctorSpecialization = doctor.specialization;
-    delete billData.doctorId;
+//     // Replace doctorId with consultantDoctor name
+//     billData.consultantDoctor = doctor.doctorName;
+//     billData.doctorSpecialization = doctor.specialization;
+//     delete billData.doctorId;
 
-    // Validate services exist
-    const serviceIds = billData.services.map((s) => s.serviceId);
-    const existingServices = await Service.find({ _id: { $in: serviceIds } });
+//     // Validate services exist
+//     const serviceIds = billData.services.map((s) => s.serviceId);
+//     const existingServices = await Service.find({ _id: { $in: serviceIds } });
 
-    if (existingServices.length !== serviceIds.length) {
-      const foundServiceIds = existingServices.map((s) => s._id.toString());
-      const missingServiceIds = serviceIds.filter(
-        (id) => !foundServiceIds.includes(id)
-      );
-      return res.status(404).json({
-        success: false,
-        message: "One or more services not found",
-        errors: [
-          {
-            field: "services",
-            message: `Services with IDs ${missingServiceIds.join(
-              ", "
-            )} do not exist`,
-          },
-        ],
-      });
-    }
+//     if (existingServices.length !== serviceIds.length) {
+//       const foundServiceIds = existingServices.map((s) => s._id.toString());
+//       const missingServiceIds = serviceIds.filter(
+//         (id) => !foundServiceIds.includes(id)
+//       );
+//       return res.status(404).json({
+//         success: false,
+//         message: "One or more services not found",
+//         errors: [
+//           {
+//             field: "services",
+//             message: `Services with IDs ${missingServiceIds.join(
+//               ", "
+//             )} do not exist`,
+//           },
+//         ],
+//       });
+//     }
 
-    // Sync service details from DB
-    for (const serviceData of billData.services) {
-      const dbService = existingServices.find(
-        (s) => s._id.toString() === serviceData.serviceId
-      );
-      if (dbService) {
-        serviceData.serviceName = dbService.name;
-        serviceData.serviceCode = dbService.code;
-        serviceData.rate = dbService.rate;
-        serviceData.amount = dbService.rate * serviceData.quantity;
-        serviceData.category = dbService.category; // keep category for lab order logic
-      }
-    }
+//     // Sync service details from DB
+//     for (const serviceData of billData.services) {
+//       const dbService = existingServices.find(
+//         (s) => s._id.toString() === serviceData.serviceId
+//       );
+//       if (dbService) {
+//         serviceData.serviceName = dbService.name;
+//         serviceData.serviceCode = dbService.code;
+//         serviceData.rate = dbService.rate;
+//         serviceData.amount = dbService.rate * serviceData.quantity;
+//         serviceData.category = dbService.category; // keep category for lab order logic
+//       }
+//     }
 
-    // Save OPD Bill
-    const opdBill = new OpdBilling(billData);
-    await opdBill.save();
+//     // Save OPD Bill
+//     const opdBill = new OpdBilling(billData);
+//     await opdBill.save();
 
-    // --- 🔥 Auto Create Lab Orders ---
-    const pathologyServices = existingServices.filter(
-      (s) => s.category === "pathology"
-    );
-    const radiologyServices = existingServices.filter(
-      (s) => s.category === "radiology"
-    );
+//     // --- 🔥 Auto Create Lab Orders ---
+//     const pathologyServices = existingServices.filter(
+//       (s) => s.category === "pathology"
+//     );
+//     const radiologyServices = existingServices.filter(
+//       (s) => s.category === "radiology"
+//     );
 
-    // Create separate lab orders for pathology and radiology
-    const createLabOrderForCategory = async (services, category) => {
-      if (services.length === 0) return null;
+//     // Create separate lab orders for pathology and radiology
+//     const createLabOrderForCategory = async (services, category) => {
+//       if (services.length === 0) return null;
 
-      const order = new LabOrder({
-        patientId: opdBill.patientId,
-        opdBillingId: opdBill._id,
-        doctorName: billData.consultantDoctor,
-        doctorSpecialization: billData.doctorSpecialization || "",
-        orderDate: new Date(),
-        status: ORDER_STATUS.PENDING,
-        patientInfo: billData.patientInfo,
-      });
-      await order.save();
+//       const order = new LabOrder({
+//         patientId: opdBill.patientId,
+//         opdBillingId: opdBill._id,
+//         doctorName: billData.consultantDoctor,
+//         doctorSpecialization: billData.doctorSpecialization || "",
+//         orderDate: new Date(),
+//         status: ORDER_STATUS.PENDING,
+//         patientInfo: billData.patientInfo,
+//       });
+//       await order.save();
 
-      // Create LabOrderTest for each service in this category
-      for (const service of services) {
-        const labOrderTest = new (require("../models/LabOrderTest"))({
-          labOrderId: order._id,
-          serviceId: service._id,
-          status: "pending",
-          serviceInfo: {
-            name: service.name,
-            code: service.code,
-            category: service.category,
-          },
-        });
-        await labOrderTest.save();
+//       // Create LabOrderTest for each service in this category
+//       for (const service of services) {
+//         const labOrderTest = new (require("../models/LabOrderTest"))({
+//           labOrderId: order._id,
+//           serviceId: service._id,
+//           status: "pending",
+//           serviceInfo: {
+//             name: service.name,
+//             code: service.code,
+//             category: service.category,
+//           },
+//         });
+//         await labOrderTest.save();
 
-        // Create placeholder LabResults for each parameter of this service
-        const parameters = await require("../models/ParameterMaster")
-          .find({
-            serviceId: service._id,
-            isActive: true,
-          })
-          .sort({ sortOrder: 1 });
+//         // Create placeholder LabResults for each parameter of this service
+//         const parameters = await require("../models/ParameterMaster")
+//           .find({
+//             serviceId: service._id,
+//             isActive: true,
+//           })
+//           .sort({ sortOrder: 1 });
 
-        for (const parameter of parameters) {
-          const labResult = new (require("../models/LabResult"))({
-            labOrderTestId: labOrderTest._id,
-            parameterId: parameter._id,
-            value: "",
-            unit: parameter.unit || "",
-            referenceRange: parameter.referenceRange || "",
-            status: "pending",
-            enteredBy: opdBill.patientId, // Temporary - should be actual user
-            parameterInfo: {
-              name: parameter.parameterName,
-              code: parameter.parameterCode,
-              dataType: parameter.dataType,
-              methodology: parameter.methodology,
-            },
-          });
-          await labResult.save();
-        }
-      }
+//         for (const parameter of parameters) {
+//           const labResult = new (require("../models/LabResult"))({
+//             labOrderTestId: labOrderTest._id,
+//             parameterId: parameter._id,
+//             value: "",
+//             unit: parameter.unit || "",
+//             ...(parameter.referenceRange ? { referenceRange: parameter.referenceRange } : {}),
+//             status: "pending",
+//             enteredBy: opdBill.patientId, // Temporary - should be actual user
+//             parameterInfo: {
+//               name: parameter.parameterName,
+//               code: parameter.parameterCode,
+//               dataType: parameter.dataType,
+//               methodology: parameter.methodology,
+//             },
+//           });
+//           await labResult.save();
+//         }
+//       }
 
-      return order;
-    };
+//       return order;
+//     };
 
-    const pathologyOrder = await createLabOrderForCategory(
-      pathologyServices,
-      "pathology"
-    );
-    const radiologyOrder = await createLabOrderForCategory(
-      radiologyServices,
-      "radiology"
-    );
+//     const pathologyOrder = await createLabOrderForCategory(
+//       pathologyServices,
+//       "pathology"
+//     );
+//     const radiologyOrder = await createLabOrderForCategory(
+//       radiologyServices,
+//       "radiology"
+//     );
 
-    const createdOrders = [pathologyOrder, radiologyOrder].filter(Boolean);
+//     const createdOrders = [pathologyOrder, radiologyOrder].filter(Boolean);
 
-    if (createdOrders.length > 0) {
-      console.log(
-        `[OPD-BILLING] Created ${createdOrders.length} lab orders for bill ${opdBill.billId} (${pathologyServices.length} pathology, ${radiologyServices.length} radiology services)`
-      );
-    }
+//     if (createdOrders.length > 0) {
+//       console.log(
+//         `[OPD-BILLING] Created ${createdOrders.length} lab orders for bill ${opdBill.billId} (${pathologyServices.length} pathology, ${radiologyServices.length} radiology services)`
+//       );
+//     }
 
-    await opdBill.populate("patientId", "patientName uhid mobileNo");
+//     await opdBill.populate("patientId", "patientName uhid mobileNo");
 
-    res.status(201).json({
-      success: true,
-      message: "OPD Bill created successfully",
-      data: opdBill,
-    });
-  } catch (error) {
-    console.error(
-      `[${new Date().toISOString()}] POST /api/opd-billing - ERROR 500:`,
-      error
-    );
-    res.status(500).json({ success: false, message: "Internal server error" });
-  }
-});
+//     res.status(201).json({
+//       success: true,
+//       message: "OPD Bill created successfully",
+//       data: opdBill,
+//     });
+//   } catch (error) {
+//     console.error(
+//       `[${new Date().toISOString()}] POST /api/opd-billing - ERROR 500:`,
+//       error
+//     );
+//     res.status(500).json({ success: false, message: "Internal server error" });
+//   }
+// });
+
+router.post("/", createOPDBill);
 
 // PUT /api/opd-billing/:id - Update OPD Bill
 router.put("/:id", validate(updateOpdBillingSchema), async (req, res) => {

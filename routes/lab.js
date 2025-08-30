@@ -927,6 +927,7 @@ router.get("/orders/:orderId/details", async (req, res) => {
             unit: param.unit,
             referenceRange: param.referenceRange,
             dataType: param.dataType,
+            options: param.options || [],
             methodology: param.methodology,
             sortOrder: param.sortOrder,
             // Include current result if exists

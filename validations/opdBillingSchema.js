@@ -1,53 +1,29 @@
 const { z } = require("zod");
 const { PAYMENT_MODES, PRIORITY } = require("../constants/enums");
 
-const patientInfoSchema = z.object({
-  uhid: z.string().min(1, "UHID is required"),
-  name: z.string().min(1, "Patient name is required"),
-  fatherOrHusbandName: z.string().min(1, "Father/Husband name is required"),
-  mobileNo: z.string().min(10, "Valid mobile number is required"),
-  age: z.number().min(1, "Age is required"),
-  gender: z.enum(["Male", "Female", "Other"], {
-    errorMap: () => ({ message: "Gender must be Male, Female, or Other" }),
-  }),
-});
-
 const serviceSchema = z.object({
   serviceId: z.string().min(1, "Service ID is required"),
-  serviceName: z.string().min(1, "Service name is required"),
-  serviceCode: z.string().min(1, "Service code is required"),
-  rate: z.number().min(0, "Rate must be greater than or equal to 0"),
+  price: z.number().min(0, "Rate must be greater than or equal to 0"),
   quantity: z.number().min(1, "Quantity must be at least 1").default(1),
   amount: z.number().min(0, "Amount must be greater than or equal to 0"),
 });
 
 const billingSchema = z.object({
-  grandTotal: z
+  grossAmount: z
     .number()
-    .min(0, "Grand total must be greater than or equal to 0"),
-  discountPercent: z
-    .number()
-    .min(0, "Discount percent must be greater than or equal to 0")
-    .max(100, "Discount percent cannot exceed 100")
-    .default(0),
-  discountValue: z
+    .min(0, "Gross Amount must be greater than or equal to 0"),
+  discount: z
     .number()
     .min(0, "Discount value must be greater than or equal to 0")
     .default(0),
-  paidAmount: z
-    .number()
-    .min(0, "Paid amount must be greater than or equal to 0"),
-  balanceAmount: z.number().default(0),
+  netAmount: z.number().min(0, "Net amount must be greater than or equal to 0"),
 });
 
 const createOpdBillingSchema = z
   .object({
-    patientId: z.string().min(1, "Patient ID is required"),
-    patientInfo: patientInfoSchema,
-    patientCategory: z.string().min(1, "Patient Category is required"),
-    refby: z.string().min(1, "Ref By is required"),
-    doctorId: z.string().min(1, "Doctor ID is required").max(20, "Doctor ID too long").trim(),
-    priority: z.enum(PRIORITY).optional(),
+    patient: z.string().min(1, "Patient ID is required"),
+    referredBy: z.string().min(1, "Ref By is required"),
+    consultantDoctor: z.string().min(1, "Doctor ID is required").trim(),
     paymentMode: z.enum(PAYMENT_MODES).optional(),
     paidAmount: z
       .number()
@@ -57,15 +33,7 @@ const createOpdBillingSchema = z
     billing: billingSchema,
   })
   .refine(
-    (data) => {
-      // Validate that service amounts match rate * quantity
-      for (const service of data.services) {
-        if (service.amount !== service.rate * service.quantity) {
-          return false;
-        }
-      }
-      return true;
-    },
+    (data) => data.services.every((s) => s.amount === s.price * s.quantity),
     {
       message: "Service amounts must equal rate × quantity",
       path: ["services"],
@@ -73,32 +41,23 @@ const createOpdBillingSchema = z
   )
   .refine(
     (data) => {
-      // Validate that grand total matches services total minus discount
-      const servicesTotal = data.services.reduce(
-        (sum, service) => sum + service.amount,
-        0
-      );
-      const discountAmount = data.billing.discountPercent
-        ? (servicesTotal * data.billing.discountPercent) / 100
-        : data.billing.discountValue;
-      const expectedGrandTotal = servicesTotal - discountAmount;
-
-      return Math.abs(data.billing.grandTotal - expectedGrandTotal) < 0.01; // Allow for floating point precision
+      const servicesTotal = data.services.reduce((sum, s) => sum + s.amount, 0);
+      const expectedNet = servicesTotal - data.billing.discount;
+      return Math.abs(data.billing.netAmount - expectedNet) < 0.01;
     },
     {
-      message: "Grand total must equal services total minus discount",
-      path: ["billing", "grandTotal"],
+      message: "Net amount must equal services total minus discount",
+      path: ["billing", "netAmount"],
     }
   )
   .refine(
     (data) => {
-      // Validate that balance amount is correct
-      const expectedBalance = data.billing.grandTotal - data.billing.paidAmount;
-      return Math.abs(data.billing.balanceAmount - expectedBalance) < 0.01; // Allow for floating point precision
+      const expectedBalance = data.billing.netAmount - data.paidAmount;
+      return expectedBalance >= 0;
     },
     {
-      message: "Balance amount must equal grand total minus paid amount",
-      path: ["billing", "balanceAmount"],
+      message: "Paid amount cannot exceed Net amount",
+      path: ["paidAmount"],
     }
   );
 

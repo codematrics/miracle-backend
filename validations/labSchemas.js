@@ -187,14 +187,7 @@ const createParameterSchema = z.object({
     .max(200, "Adult range must not exceed 200 characters")
     .optional(),
   dataType: z.enum(["numeric", "text", "boolean", "select"]).default("numeric"),
-  selectOptions: z
-    .array(
-      z.object({
-        value: z.string(),
-        label: z.string(),
-      })
-    )
-    .optional(),
+  options: z.array(z.string()).optional(),
   sortOrder: z.number().default(0),
   isActive: z.boolean().default(true),
   minValue: z.number().optional(),

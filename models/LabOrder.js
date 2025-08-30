@@ -9,31 +9,25 @@ const labOrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    patientId: {
+    patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
       index: true,
     },
-    visitId: {
+    visit: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Visit",
       index: true,
     },
-    opdBillingId: {
+    bill: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "OpdBilling",
       index: true,
     },
-    doctorName: {
-      // Changed from doctorId -> doctorName (string)
+    doctor: {
       type: String,
       required: true,
-      trim: true,
-    },
-    doctorSpecialization: {
-      // For specialization (optional)
-      type: String,
       trim: true,
     },
     status: {
@@ -45,26 +39,12 @@ const labOrderSchema = new mongoose.Schema(
     orderDate: {
       type: Date,
       default: Date.now,
-      required: true,
-    },
-    priority: {
-      type: String,
-      enum: PRIORITY,
-      default: PRIORITY.NORMAL,
     },
     instructions: {
       type: String,
       maxlength: 1000,
     },
     collectedAt: Date,
-    // Cached patient info
-    patientInfo: {
-      name: String,
-      uhid: String,
-      age: String,
-      gender: String,
-      mobileNo: String,
-    },
   },
   {
     timestamps: true,

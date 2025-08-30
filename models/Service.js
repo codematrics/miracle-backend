@@ -1,102 +1,42 @@
 const mongoose = require("mongoose");
-
-const SERVICE_CATEGORIES = [
-  "consultation",
-  "diagnostic",
-  "laboratory",
-  "pathology",
-  "radiology",
-  "procedure",
-  "surgery",
-  "pharmacy",
-  "emergency",
-  "other",
-];
-
-const SERVICE_STATUS = ["active", "inactive"];
+const {
+  SERVICE_CATEGORY,
+  SERVICE_APPLICABLE,
+  FORMAT_TYPE,
+  SAMPLE_TYPE,
+} = require("../constants/enums");
 
 const serviceSchema = new mongoose.Schema(
   {
-    name: {
+    serviceHead: { type: String, required: true },
+    serviceName: { type: String, required: true },
+    unit: { type: String },
+    headType: {
       type: String,
+      enum: Object.values(SERVICE_CATEGORY),
       required: true,
-      trim: true,
-      minlength: [2, "Service name must be at least 2 characters"],
-      maxlength: [100, "Service name must not exceed 100 characters"],
     },
-    code: {
+    serviceApplicableOn: {
       type: String,
+      enum: Object.values(SERVICE_APPLICABLE),
       required: true,
-      unique: true,
-      trim: true,
-      uppercase: true,
-      minlength: [2, "Service code must be at least 2 characters"],
-      maxlength: [20, "Service code must not exceed 20 characters"],
-      match: [
-        /^[A-Z0-9_]+$/,
-        "Service code should only contain uppercase letters, numbers, and underscores",
-      ],
     },
-    description: {
-      type: String,
-      trim: true,
-      maxlength: [500, "Description must not exceed 500 characters"],
-      default: "",
-    },
-    category: {
-      type: String,
-      required: true,
-      enum: {
-        values: SERVICE_CATEGORIES,
-        message: "Category must be one of: " + SERVICE_CATEGORIES.join(", "),
+    linkedParameters: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LabParameter",
       },
+    ],
+    linkedTemplate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RadiologyTemplate",
     },
-    rate: {
-      type: Number,
-      required: true,
-      min: [0, "Rate cannot be negative"],
-    },
-    status: {
-      type: String,
-      required: true,
-      enum: {
-        values: SERVICE_STATUS,
-        message: "Status must be one of: " + SERVICE_STATUS.join(", "),
-      },
-      default: "active",
-    },
-
-    // ✅ New field for Pathology / Radiology
-    reportName: {
-      type: String,
-      trim: true,
-      maxlength: [100, "Report name must not exceed 100 characters"],
-      validate: {
-        validator: function (v) {
-          if (this.category === "pathology" || this.category === "radiology") {
-            return v && v.trim().length > 0;
-          }
-          return true;
-        },
-        message:
-          "Report name is required when category is pathology or radiology",
-      },
-    },
-
-    // Old fields for backward compatibility
-    serviceId: { type: String, sparse: true },
-    serviceName: { type: String, trim: true },
-    serviceCode: { type: String, trim: true },
+    isOutSource: { type: Boolean, default: true },
+    code: { type: String, required: true, unique: true },
+    price: { type: Number },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-// Indexes for better performance
-serviceSchema.index({ category: 1 });
-serviceSchema.index({ status: 1 });
-serviceSchema.index({ code: 1 });
-serviceSchema.index({ name: "text", description: "text" });
-
 module.exports = mongoose.model("Service", serviceSchema);
-module.exports.SERVICE_CATEGORIES = SERVICE_CATEGORIES;
-module.exports.SERVICE_STATUS = SERVICE_STATUS;

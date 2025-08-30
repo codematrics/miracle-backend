@@ -7,13 +7,18 @@ require("dotenv").config();
 const authRoutes = require("./routes/auth");
 const patientRoutes = require("./routes/patient");
 const parametersRoutes = require("./routes/parameters");
+const labParametersRoutes = require("./routes/labParameter");
 const serviceRoutes = require("./routes/service");
 const visitRoutes = require("./routes/visit");
+const LabTestOderRoutes = require("./routes/labTestOrder");
 const enumRoutes = require("./routes/enums");
 const opdBillingRoutes = require("./routes/opdBilling");
 const labRoutes = require("./routes/lab");
+const PrescriptionRoutes = require("./routes/prescription");
+const labTestRoutes = require("./routes/labTest");
 const pathologyRoutes = require("./routes/pathology");
 const doctorRoutes = require("./routes/doctor");
+const radiologyTemplateRoutes = require("./routes/radiologyTemplate");
 const {
   securityMiddleware,
   authLimiter,
@@ -21,13 +26,36 @@ const {
 } = require("./middleware/security");
 
 const app = express();
+app.set("trust proxy", 1);
 
-app.use(cors());
+// ✅ Configure CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://miracle-staging-web.vercel.app", // deployed frontend
+  "https://miracle-frontend-gamma.vercel.app",
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // allow REST tools or server-to-server with no origin
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+};
+
+app.use(cors(corsOptions));
+
+// ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// ✅ Security middlewares (helmet, mongo sanitize, xss clean)
 app.use(securityMiddleware);
 
+// ✅ Logging
 app.use(
   morgan("combined", {
     format:
@@ -35,33 +63,28 @@ app.use(
   })
 );
 
-mongoose
-  .connect(
-    process.env.MONGODB_URI || "mongodb://localhost:27017/hospitalmanagement"
-  )
-  .then(() => {
-    console.log("Connected to MongoDB");
-  })
-  .catch((error) => {
-    console.error("MongoDB connection error:", error);
-    process.exit(1);
-  });
-
+// ✅ Routes
 app.use("/api/lab", apiLimiter, labRoutes);
+app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/patients", apiLimiter, patientRoutes);
+app.use("/api/prescriptions", apiLimiter, PrescriptionRoutes);
+app.use("/api/lab-test-orders", apiLimiter, LabTestOderRoutes);
 app.use("/api/parameters", apiLimiter, parametersRoutes);
+app.use("/api/lab-parameters", apiLimiter, labParametersRoutes);
 app.use("/api/services", apiLimiter, serviceRoutes);
 app.use("/api/visits", apiLimiter, visitRoutes);
 app.use("/api/opd-billing", apiLimiter, opdBillingRoutes);
 app.use("/api/pathology", apiLimiter, pathologyRoutes);
 app.use("/api/doctors", apiLimiter, doctorRoutes);
+app.use("/api/radiology-template", apiLimiter, radiologyTemplateRoutes);
 app.use("/api/enums", enumRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Hospital Management System API" });
 });
 
+// ✅ Global error handler
 app.use((err, req, res, next) => {
   console.error(
     `[${new Date().toISOString()}] ERROR: ${req.method} ${req.path}`
@@ -82,7 +105,19 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ✅ Start server only after DB connection
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/miracle", {
+    dbName: "miracle",
+  })
+  .then(() => {
+    console.log("✅ Connected to MongoDB");
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("❌ MongoDB connection error:", error.message);
+    process.exit(1);
+  });
