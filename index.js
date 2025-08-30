@@ -26,14 +26,38 @@ const {
 } = require("./middleware/security");
 
 const app = express();
-app.set("trust proxy", 1); // 1 = trust first proxy (typical for Vercel/Heroku/AWS)
+app.set("trust proxy", 1);
 
-app.use(cors());
+// ✅ Configure CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://miracle-staging-web.vercel.app", // deployed frontend
+  "https://miracle-frontend-gamma.vercel.app",
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // allow REST tools or server-to-server with no origin
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true, // needed if using cookies or Authorization headers
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // handle preflight
+
+// ✅ Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// ✅ Security middlewares (helmet, mongo sanitize, xss clean)
 app.use(securityMiddleware);
 
+// ✅ Logging
 app.use(
   morgan("combined", {
     format:
@@ -41,7 +65,7 @@ app.use(
   })
 );
 
-// Routes
+// ✅ Routes
 app.use("/api/lab", apiLimiter, labRoutes);
 app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
@@ -62,7 +86,7 @@ app.get("/", (req, res) => {
   res.json({ message: "Hospital Management System API" });
 });
 
-// Global error handler
+// ✅ Global error handler
 app.use((err, req, res, next) => {
   console.error(
     `[${new Date().toISOString()}] ERROR: ${req.method} ${req.path}`
@@ -83,9 +107,8 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ✅ Start server only after DB connection
 const PORT = process.env.PORT || 5000;
-
-// Connect to MongoDB first, then start server
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/miracle", {
     dbName: "miracle",
@@ -98,5 +121,5 @@ mongoose
   })
   .catch((error) => {
     console.error("❌ MongoDB connection error:", error.message);
-    process.exit(1); // Exit so server doesn’t run
+    process.exit(1);
   });
