@@ -26,6 +26,7 @@ const {
 } = require("./middleware/security");
 
 const app = express();
+app.set("trust proxy", 1); // 1 = trust first proxy (typical for Vercel/Heroku/AWS)
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
