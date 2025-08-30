@@ -46,7 +46,7 @@ const createPatientSchema = z.object({
   maritalStatus: z.enum(MARITAL_STATUS).optional(),
   religion: z.enum(RELIGIONS).optional(),
   occupation: z.string().optional(),
-  email: z.string().email({ message: "Invalid email" }).optional(),
+  email: z.email({ message: "Invalid email" }).optional(),
   idType: z.enum(ID_TYPES).optional(),
   idNo: z.string().optional(),
 
