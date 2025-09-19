@@ -7,6 +7,7 @@ const serverless = require("serverless-http");
 
 const authRoutes = require("./routes/auth");
 const patientRoutes = require("./routes/patient");
+const bedRoutes = require("./routes/bed");
 const parametersRoutes = require("./routes/parameters");
 const labParametersRoutes = require("./routes/labParameter");
 const serviceRoutes = require("./routes/service");
@@ -51,6 +52,7 @@ app.use(
 
 // ✅ Routes
 app.use("/api/lab", apiLimiter, labRoutes);
+app.use("/api/bed", apiLimiter, bedRoutes);
 app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/patients", apiLimiter, patientRoutes);
