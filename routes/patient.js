@@ -269,10 +269,14 @@ router.get("/:uhid/details", async (req, res) => {
     const address = addressParts.join(", ") || "Not provided";
 
     // Format patient name with relation
-    const patientName = `${patient.name} ${patient.relation} ${patient.relativeName || ""}`.trim();
+    const patientName = `${patient.name} ${patient.relation} ${
+      patient.relativeName || ""
+    }`.trim();
 
     // Format age and gender
-    const ageGender = `${patient.age || "N/A"} Year / ${patient.gender?.charAt(0)?.toUpperCase() || "N/A"}`;
+    const ageGender = `${patient.age || "N/A"} Year / ${
+      patient.gender?.charAt(0)?.toUpperCase() || "N/A"
+    }`;
 
     // Prepare response
     const patientDetails = {
@@ -287,7 +291,8 @@ router.get("/:uhid/details", async (req, res) => {
             visitDate: recentVisit.visitDate,
             visitType: recentVisit.visitType,
             doctorName: recentVisit.doctorInfo?.name || "Not assigned",
-            doctorQualification: recentVisit.doctorInfo?.qualification || "Not provided",
+            doctorQualification:
+              recentVisit.doctorInfo?.qualification || "Not provided",
             referredBy: recentVisit.referredBy || "Direct",
             status: recentVisit.status,
           }

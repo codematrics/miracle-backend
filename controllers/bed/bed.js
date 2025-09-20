@@ -164,7 +164,7 @@ const deleteBedController = async (req, res) => {
 
 const getBedDropdownController = async (req, res) => {
   try {
-    const { search = "", page = 1, limit = 10 } = req.query;
+    const { search = "", page = 1, limit = 10, status } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
@@ -173,6 +173,11 @@ const getBedDropdownController = async (req, res) => {
     const searchRegex = new RegExp(search, "i");
     const query = {
       $or: [{ ward: searchRegex }],
+      $and: [
+        status && {
+          status: status,
+        },
+      ].filter(Boolean),
     };
 
     const total = await Beds.countDocuments(query);

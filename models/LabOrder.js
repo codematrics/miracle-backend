@@ -20,9 +20,10 @@ const labOrderSchema = new mongoose.Schema(
       ref: "Visit",
       index: true,
     },
-    bill: {
+    billingType: { type: String, enum: ["OpdBilling", "IPD"] },
+    billingId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "OpdBilling",
+      refPath: "billingType",
       index: true,
     },
     doctor: {

@@ -73,14 +73,17 @@ exports.createOPDBill = async (req, res) => {
 
     // Filter services that require lab order tests (Pathology and Radiology)
     const labServices = services.filter(
-      (s) => s.headType === SERVICE_CATEGORY.PATHOLOGY || s.headType === SERVICE_CATEGORY.RADIOLOGY
+      (s) =>
+        s.headType === SERVICE_CATEGORY.PATHOLOGY ||
+        s.headType === SERVICE_CATEGORY.RADIOLOGY
     );
 
     if (labServices.length) {
       const labOrder = await LabOrder.create({
         patient: patient._id,
         visit: visit._id,
-        bill: opdBill._id,
+        billingType: "OpdBilling",
+        billingId: opdBill._id,
         doctor: doctor._id,
       });
 

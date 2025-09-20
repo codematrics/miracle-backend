@@ -13,6 +13,7 @@ const createDoctorController = async (req, res) => {
     const existing = await Doctor.findOne({
       licenseNumber: validatedData.licenseNumber,
     });
+
     if (existing) {
       return res.status(400).json({
         message: "Doctor with this license number already exists",
