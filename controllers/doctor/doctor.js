@@ -4,6 +4,8 @@ const {
   createDoctorSchema,
   updateDoctorSchema,
 } = require("../../validations/doctorSchema");
+const User = require("../../models/User");
+const { ROLES } = require("../../constants/enums");
 
 const createDoctorController = async (req, res) => {
   try {
@@ -22,7 +24,18 @@ const createDoctorController = async (req, res) => {
       });
     }
 
-    const doctor = new Doctor(validatedData);
+    const user = new User({
+      firstName: validatedData.name,
+      lastName: validatedData.name,
+      email: validatedData.email,
+      mobileNumber: validatedData.mobileNo,
+      role: ROLES.DOCTOR,
+      password: validatedData.mobileNo,
+    });
+
+    user.save();
+
+    const doctor = new Doctor({ ...validatedData, userId: user._id });
     await doctor.save();
 
     return res.json({

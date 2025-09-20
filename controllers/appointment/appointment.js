@@ -7,6 +7,7 @@ const {
 const Doctor = require("../../models/Doctor");
 const Patient = require("../../models/Patient");
 const Appointment = require("../../models/Appointment");
+const { ROLES } = require("../../constants/enums");
 
 const createAppointmentController = async (req, res) => {
   try {
@@ -80,19 +81,25 @@ const createAppointmentController = async (req, res) => {
 
 const listAppointmentsController = async (req, res) => {
   try {
+    const { user, doctor } = req;
     const { page = 1, limit = 10, search = "", status = "" } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
+    console.log(doctor, user);
     const query = {
       $and: [
         status && {
           status: status,
         },
+        user.role === ROLES.DOCTOR && {
+          doctor: doctor._id,
+        },
       ].filter(Boolean),
     };
 
+    console.log(await Appointment.find({ doctor: doctor._id }));
     const total = await Appointment.countDocuments(query);
     const appointments = await Appointment.find(query)
       .populate("patient doctor")
