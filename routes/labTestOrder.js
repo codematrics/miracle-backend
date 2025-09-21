@@ -16,13 +16,16 @@ const {
   saveRadiologyTemplateResult,
   printRadiologyReport,
 } = require("../controllers/labTestOrder/LabTestOrder");
-const {
-  listParametersWithServiceLinkController,
-} = require("../controllers/service/service");
+const { requireAuth } = require("../middleware/auth");
+const { ROLES } = require("../constants/enums");
 
 const router = express.Router();
 
-router.get("/", listLabTestController);
+router.get(
+  "/",
+  requireAuth({ roles: [ROLES.ADMIN, ROLES.TECHNICIAN, ROLES.DOCTOR] }),
+  listLabTestController
+);
 router.get("/collected", listCollectedLabTestController);
 router.get("/saved", listSavedLabTestController);
 router.get("/parameters", getLabParametersGroupedByReportType);

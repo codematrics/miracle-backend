@@ -9,6 +9,7 @@ const radiologyReportSchema = new mongoose.Schema(
     },
     templateUsedId: { type: mongoose.Schema.Types.ObjectId },
     findings: { type: String },
+    templateContent: { type: String },
     impression: { type: String },
     methodology: { type: String },
     authorizedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

@@ -3,9 +3,11 @@ const LabResult = require("../../models/LabResult");
 const RadiologyReport = require("../../models/RadioLogyReport");
 const PdfPrinter = require("pdfmake");
 const path = require("path");
+const { ROLES } = require("../../constants/enums");
 
 const listLabTestController = async (req, res) => {
   try {
+    const { doctor, user } = req;
     const {
       search = "",
       headType = "",
@@ -29,6 +31,10 @@ const listLabTestController = async (req, res) => {
       query.status = status;
     }
 
+    // if (user.role === ROLES.DOCTOR) {
+    //   query["labOrderId.doctor"] = doctor._id;
+    // }
+
     // Date range filter
     if (from || to) {
       query.createdAt = {};
@@ -41,7 +47,9 @@ const listLabTestController = async (req, res) => {
     }
 
     const pipeline = [
-      { $match: query },
+      {
+        $match: query,
+      },
       {
         $lookup: {
           from: "services",
@@ -99,13 +107,22 @@ const listLabTestController = async (req, res) => {
         $match: {
           ...(search && { "service.serviceName": searchRegex }),
           ...(headType && { "service.headType": headType }),
-          ...(mobileNo && { "patient.contactNumber": { $regex: mobileNo, $options: "i" } }),
-          ...(uhid && { $or: [
-            { "patient.uhidNo": { $regex: uhid, $options: "i" } },
-            { "patient.patientId": { $regex: uhid, $options: "i" } }
-          ]}),
-          ...(patientName && { "patient.name": { $regex: patientName, $options: "i" } }),
+          ...(mobileNo && {
+            "patient.contactNumber": { $regex: mobileNo, $options: "i" },
+          }),
+          ...(uhid && {
+            $or: [
+              { "patient.uhidNo": { $regex: uhid, $options: "i" } },
+              { "patient.patientId": { $regex: uhid, $options: "i" } },
+            ],
+          }),
+          ...(patientName && {
+            "patient.name": { $regex: patientName, $options: "i" },
+          }),
           ...(reportType && { "parameters.reportType": reportType }),
+          ...(user.role === ROLES.DOCTOR && {
+            "doctor._id": doctor._id,
+          }),
         },
       },
 
@@ -736,12 +753,18 @@ const listSavedLabTestController = async (req, res) => {
         $match: {
           ...(search && { "service.serviceName": searchRegex }),
           ...(headType && { "service.headType": headType }),
-          ...(mobileNo && { "patient.contactNumber": { $regex: mobileNo, $options: "i" } }),
-          ...(uhid && { $or: [
-            { "patient.uhidNo": { $regex: uhid, $options: "i" } },
-            { "patient.patientId": { $regex: uhid, $options: "i" } }
-          ]}),
-          ...(patientName && { "patient.name": { $regex: patientName, $options: "i" } }),
+          ...(mobileNo && {
+            "patient.contactNumber": { $regex: mobileNo, $options: "i" },
+          }),
+          ...(uhid && {
+            $or: [
+              { "patient.uhidNo": { $regex: uhid, $options: "i" } },
+              { "patient.patientId": { $regex: uhid, $options: "i" } },
+            ],
+          }),
+          ...(patientName && {
+            "patient.name": { $regex: patientName, $options: "i" },
+          }),
           ...(reportType && { "parameters.reportType": reportType }),
         },
       },
@@ -864,12 +887,18 @@ const listAuthorizedLabTestController = async (req, res) => {
         $match: {
           ...(search && { "service.serviceName": searchRegex }),
           ...(headType && { "service.headType": headType }),
-          ...(mobileNo && { "patient.contactNumber": { $regex: mobileNo, $options: "i" } }),
-          ...(uhid && { $or: [
-            { "patient.uhidNo": { $regex: uhid, $options: "i" } },
-            { "patient.patientId": { $regex: uhid, $options: "i" } }
-          ]}),
-          ...(patientName && { "patient.name": { $regex: patientName, $options: "i" } }),
+          ...(mobileNo && {
+            "patient.contactNumber": { $regex: mobileNo, $options: "i" },
+          }),
+          ...(uhid && {
+            $or: [
+              { "patient.uhidNo": { $regex: uhid, $options: "i" } },
+              { "patient.patientId": { $regex: uhid, $options: "i" } },
+            ],
+          }),
+          ...(patientName && {
+            "patient.name": { $regex: patientName, $options: "i" },
+          }),
           ...(reportType && { "parameters.reportType": reportType }),
         },
       },
@@ -1543,7 +1572,6 @@ const printLabTestOrder = async (req, res) => {
       parametersGroupedByReportType,
     };
 
-
     // --- PDF Definition ---
     const docDefinition = {
       pageSize: "A4",
@@ -1652,213 +1680,240 @@ const printLabTestOrder = async (req, res) => {
         },
 
         // Create pages for each report type
-        ...Object.entries(parametersGroupedByReportType).map(([reportType, parameters], reportIndex) => [
-          // Page break for subsequent report types
-          ...(reportIndex > 0 ? [
-            { text: "", pageBreak: "before" },
-            
-            // Header Image for new page
-            {
-              image: path.join(__dirname, "../../assets/header_prescription.jpg"),
-              width: 480,
-              alignment: "center",
-            },
-            { text: "\n" },
+        ...Object.entries(parametersGroupedByReportType)
+          .map(([reportType, parameters], reportIndex) => [
+            // Page break for subsequent report types
+            ...(reportIndex > 0
+              ? [
+                  { text: "", pageBreak: "before" },
 
-            // Lab Report Title for new page
+                  // Header Image for new page
+                  {
+                    image: path.join(
+                      __dirname,
+                      "../../assets/header_prescription.jpg"
+                    ),
+                    width: 480,
+                    alignment: "center",
+                  },
+                  { text: "\n" },
+
+                  // Lab Report Title for new page
+                  {
+                    text: "LABORATORY REPORT",
+                    style: "reportTitle",
+                    alignment: "center",
+                    margin: [0, 0, 0, 20],
+                  },
+
+                  // Patient Info Section for new page
+                  {
+                    columns: [
+                      {
+                        width: "50%",
+                        stack: [
+                          {
+                            text: "PATIENT INFORMATION",
+                            style: "sectionHeader",
+                            margin: [0, 0, 0, 8],
+                          },
+                          {
+                            text: [
+                              { text: "UHID: ", style: "labelBold" },
+                              { text: labReportData.UHID, style: "normalText" },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Patient Name: ", style: "labelBold" },
+                              {
+                                text: labReportData.patientName,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Age/Gender: ", style: "labelBold" },
+                              {
+                                text: `${labReportData.age} / ${labReportData.gender}`,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Mobile: ", style: "labelBold" },
+                              {
+                                text: labReportData.mobile,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                        ],
+                      },
+                      {
+                        width: "50%",
+                        stack: [
+                          {
+                            text: "TEST INFORMATION",
+                            style: "sectionHeader",
+                            margin: [0, 0, 0, 8],
+                          },
+                          {
+                            text: [
+                              { text: "Visit No: ", style: "labelBold" },
+                              {
+                                text: labReportData.visitNo,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Service: ", style: "labelBold" },
+                              {
+                                text: labReportData.serviceName,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Test Date: ", style: "labelBold" },
+                              {
+                                text: labReportData.testDate,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                          {
+                            text: [
+                              { text: "Doctor: ", style: "labelBold" },
+                              {
+                                text: labReportData.doctorName,
+                                style: "normalText",
+                              },
+                            ],
+                            margin: [0, 0, 0, 4],
+                          },
+                        ],
+                      },
+                    ],
+                    margin: [0, 0, 0, 25],
+                  },
+                ]
+              : []),
+
+            // Report Type Header
             {
-              text: "LABORATORY REPORT",
-              style: "reportTitle",
+              text: reportType.toUpperCase() + " REPORT",
+              style: "reportTypeTitle",
               alignment: "center",
-              margin: [0, 0, 0, 20],
+              margin: [0, 15, 0, 15],
             },
 
-            // Patient Info Section for new page
+            // Column Headers
             {
-              columns: [
-                {
-                  width: "50%",
-                  stack: [
-                    {
-                      text: "PATIENT INFORMATION",
-                      style: "sectionHeader",
-                      margin: [0, 0, 0, 8],
-                    },
-                    {
-                      text: [
-                        { text: "UHID: ", style: "labelBold" },
-                        { text: labReportData.UHID, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Patient Name: ", style: "labelBold" },
-                        { text: labReportData.patientName, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Age/Gender: ", style: "labelBold" },
-                        {
-                          text: `${labReportData.age} / ${labReportData.gender}`,
-                          style: "normalText",
-                        },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Mobile: ", style: "labelBold" },
-                        { text: labReportData.mobile, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                  ],
-                },
-                {
-                  width: "50%",
-                  stack: [
-                    {
-                      text: "TEST INFORMATION",
-                      style: "sectionHeader",
-                      margin: [0, 0, 0, 8],
-                    },
-                    {
-                      text: [
-                        { text: "Visit No: ", style: "labelBold" },
-                        { text: labReportData.visitNo, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Service: ", style: "labelBold" },
-                        { text: labReportData.serviceName, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Test Date: ", style: "labelBold" },
-                        { text: labReportData.testDate, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                    {
-                      text: [
-                        { text: "Doctor: ", style: "labelBold" },
-                        { text: labReportData.doctorName, style: "normalText" },
-                      ],
-                      margin: [0, 0, 0, 4],
-                    },
-                  ],
-                },
-              ],
-              margin: [0, 0, 0, 25],
-            }
-          ] : []),
-          
-          // Report Type Header
-          {
-            text: reportType.toUpperCase() + " REPORT",
-            style: "reportTypeTitle",
-            alignment: "center",
-            margin: [0, 15, 0, 15],
-          },
-          
-          // Column Headers
-          {
-            columns: [
-              {
-                width: "35%",
-                text: "PARAMETER",
-                style: "columnHeader"
-              },
-              {
-                width: "20%",
-                text: "RESULT",
-                style: "columnHeader"
-              },
-              {
-                width: "15%",
-                text: "UNIT",
-                style: "columnHeader"
-              },
-              {
-                width: "30%",
-                text: "REFERENCE RANGE",
-                style: "columnHeader"
-              }
-            ],
-            margin: [0, 0, 0, 5]
-          },
-          
-          // Underline for headers
-          {
-            canvas: [
-              {
-                type: "line",
-                x1: 0,
-                y1: 0,
-                x2: 515,
-                y2: 0,
-                lineWidth: 2,
-                lineColor: "#341f62"
-              }
-            ],
-            margin: [0, 0, 0, 15]
-          },
-          
-          // Parameters for this report type
-          ...parameters.map((parameter, index) => {
-            const bioRef = parameter.bioReference?.[0];
-            const referenceRange = bioRef ? `${bioRef.min}-${bioRef.max}` : "N/A";
-            
-            return {
               columns: [
                 {
                   width: "35%",
-                  stack: [
-                    {
-                      text: parameter.parameterName || "N/A",
-                      style: "parameterName",
-                    }
-                  ]
+                  text: "PARAMETER",
+                  style: "columnHeader",
                 },
                 {
                   width: "20%",
-                  stack: [
-                    {
-                      text: parameter.resultValue || "-",
-                      style: "resultValue",
-                    }
-                  ]
+                  text: "RESULT",
+                  style: "columnHeader",
                 },
                 {
                   width: "15%",
-                  stack: [
-                    {
-                      text: parameter.unit || "-",
-                      style: "unitText",
-                    }
-                  ]
+                  text: "UNIT",
+                  style: "columnHeader",
                 },
                 {
                   width: "30%",
-                  stack: [
-                    {
-                      text: referenceRange,
-                      style: "refRange"
-                    }
-                  ]
-                }
+                  text: "REFERENCE RANGE",
+                  style: "columnHeader",
+                },
               ],
-              margin: [0, 0, 0, 8],
-            };
-          }),
-        ]).flat(),
+              margin: [0, 0, 0, 5],
+            },
+
+            // Underline for headers
+            {
+              canvas: [
+                {
+                  type: "line",
+                  x1: 0,
+                  y1: 0,
+                  x2: 515,
+                  y2: 0,
+                  lineWidth: 2,
+                  lineColor: "#341f62",
+                },
+              ],
+              margin: [0, 0, 0, 15],
+            },
+
+            // Parameters for this report type
+            ...parameters.map((parameter, index) => {
+              const bioRef = parameter.bioReference?.[0];
+              const referenceRange = bioRef
+                ? `${bioRef.min}-${bioRef.max}`
+                : "N/A";
+
+              return {
+                columns: [
+                  {
+                    width: "35%",
+                    stack: [
+                      {
+                        text: parameter.parameterName || "N/A",
+                        style: "parameterName",
+                      },
+                    ],
+                  },
+                  {
+                    width: "20%",
+                    stack: [
+                      {
+                        text: parameter.resultValue || "-",
+                        style: "resultValue",
+                      },
+                    ],
+                  },
+                  {
+                    width: "15%",
+                    stack: [
+                      {
+                        text: parameter.unit || "-",
+                        style: "unitText",
+                      },
+                    ],
+                  },
+                  {
+                    width: "30%",
+                    stack: [
+                      {
+                        text: referenceRange,
+                        style: "refRange",
+                      },
+                    ],
+                  },
+                ],
+                margin: [0, 0, 0, 8],
+              };
+            }),
+          ])
+          .flat(),
 
         // Footer
         {
@@ -1980,19 +2035,23 @@ const getLabTestOrderTemplate = async (req, res) => {
     }
 
     // Find the lab test order and populate service with linkedTemplate
-    const labTestOrder = await LabOrderTest.findById(labTestOrderId)
-      .populate({
-        path: "serviceId",
-        populate: {
-          path: "linkedTemplate",
-          model: "RadiologyTemplate",
-          select: "templateName templateContent description isActive createdBy updatedBy",
-          populate: [
-            { path: "createdBy", select: "name" },
-            { path: "updatedBy", select: "name" }
-          ]
-        }
-      });
+    const labTestOrder = await LabOrderTest.findById(labTestOrderId).populate({
+      path: "serviceId",
+      populate: {
+        path: "linkedTemplate",
+        model: "RadiologyTemplate",
+        select:
+          "templateName templateContent description isActive createdBy updatedBy",
+        populate: [
+          { path: "createdBy", select: "name" },
+          { path: "updatedBy", select: "name" },
+        ],
+      },
+    });
+
+    const radiologyReport = await RadiologyReport.findOne({
+      orderTestId: labTestOrder._id,
+    });
 
     if (!labTestOrder) {
       return res.status(404).json({
@@ -2003,8 +2062,8 @@ const getLabTestOrderTemplate = async (req, res) => {
     }
 
     // Check if service has a linked template
-    const template = labTestOrder.serviceId?.linkedTemplate;
-    
+    const template = labTestOrder.serviceId.linkedTemplate;
+
     if (!template) {
       return res.json({
         message: "No template linked to this lab test order",
@@ -2031,15 +2090,31 @@ const getLabTestOrderTemplate = async (req, res) => {
           code: labTestOrder.serviceId.code,
           headType: labTestOrder.serviceId.headType,
         },
-        template: {
-          _id: template._id,
-          templateName: template.templateName,
-          templateContent: template.templateContent,
-          description: template.description,
-          isActive: template.isActive,
-          createdBy: template.createdBy,
-          updatedBy: template.updatedBy,
-        },
+        template: radiologyReport
+          ? {
+              _id: template._id,
+              templateName: template.templateName,
+              templateContent: radiologyReport.templateContent,
+              description: template.description,
+              isActive: template.isActive,
+              createdBy: template.createdBy,
+              updatedBy: template.updatedBy,
+              findings: radiologyReport.findings,
+              impression: radiologyReport.impression,
+              methodology: radiologyReport.methodology,
+            }
+          : {
+              _id: template._id,
+              templateName: template.templateName,
+              templateContent: template.templateContent,
+              description: template.description,
+              isActive: template.isActive,
+              createdBy: template.createdBy,
+              updatedBy: template.updatedBy,
+              findings: template.findings,
+              impression: template.impression,
+              methodology: template.methodology,
+            },
       },
       status: true,
     });
@@ -2056,7 +2131,14 @@ const getLabTestOrderTemplate = async (req, res) => {
 // Save radiology template result and authorize
 const saveRadiologyTemplateResult = async (req, res) => {
   try {
-    const { labTestOrderId, templateContent, findings, impression, methodology, userId } = req.body;
+    const {
+      labTestOrderId,
+      templateContent,
+      findings,
+      impression,
+      methodology,
+      userId,
+    } = req.body;
 
     if (!labTestOrderId || !templateContent) {
       return res.status(400).json({
@@ -2067,14 +2149,13 @@ const saveRadiologyTemplateResult = async (req, res) => {
     }
 
     // Find the lab test order and validate
-    const labTestOrder = await LabOrderTest.findById(labTestOrderId)
-      .populate({
-        path: "serviceId",
-        populate: {
-          path: "linkedTemplate",
-          model: "RadiologyTemplate"
-        }
-      });
+    const labTestOrder = await LabOrderTest.findById(labTestOrderId).populate({
+      path: "serviceId",
+      populate: {
+        path: "linkedTemplate",
+        model: "RadiologyTemplate",
+      },
+    });
 
     if (!labTestOrder) {
       return res.status(404).json({
@@ -2103,13 +2184,15 @@ const saveRadiologyTemplateResult = async (req, res) => {
 
     // Check if report already exists, update if it does, create if it doesn't
     let radiologyReport = await RadiologyReport.findOne({
-      orderTestId: labTestOrderId
+      orderTestId: labTestOrderId,
     });
 
     if (radiologyReport) {
       // Update existing report
-      radiologyReport.templateUsedId = labTestOrder.serviceId.linkedTemplate._id;
+      radiologyReport.templateUsedId =
+        labTestOrder.serviceId.linkedTemplate._id;
       radiologyReport.findings = findings || "";
+      radiologyReport.templateContent = templateContent || "";
       radiologyReport.impression = impression || "";
       radiologyReport.methodology = methodology || "";
       radiologyReport.authorizedBy = userId;
@@ -2120,6 +2203,7 @@ const saveRadiologyTemplateResult = async (req, res) => {
       radiologyReport = new RadiologyReport({
         orderTestId: labTestOrderId,
         templateUsedId: labTestOrder.serviceId.linkedTemplate._id,
+        templateContent: templateContent || "",
         findings: findings || "",
         impression: impression || "",
         methodology: methodology || "",
@@ -2145,6 +2229,7 @@ const saveRadiologyTemplateResult = async (req, res) => {
           _id: labTestOrder.serviceId.linkedTemplate._id,
           templateName: labTestOrder.serviceId.linkedTemplate.templateName,
         },
+        templateContent: radiologyReport.templateContent,
         findings: radiologyReport.findings,
         impression: radiologyReport.impression,
         methodology: radiologyReport.methodology,
@@ -2181,7 +2266,7 @@ const printRadiologyReport = async (req, res) => {
         populate: {
           path: "linkedTemplate",
           model: "RadiologyTemplate",
-        }
+        },
       })
       .populate({
         path: "labOrderId",
@@ -2218,7 +2303,7 @@ const printRadiologyReport = async (req, res) => {
 
     // Get radiology report
     const radiologyReport = await RadiologyReport.findOne({
-      orderTestId: labTestOrderId
+      orderTestId: labTestOrderId,
     }).populate("authorizedBy", "name");
 
     if (!radiologyReport) {

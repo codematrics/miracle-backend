@@ -87,7 +87,6 @@ const listAppointmentsController = async (req, res) => {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
-    console.log(doctor, user);
     const query = {
       $and: [
         status && {
@@ -99,7 +98,6 @@ const listAppointmentsController = async (req, res) => {
       ].filter(Boolean),
     };
 
-    console.log(await Appointment.find({ doctor: doctor._id }));
     const total = await Appointment.countDocuments(query);
     const appointments = await Appointment.find(query)
       .populate("patient doctor")
