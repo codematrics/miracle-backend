@@ -7,6 +7,7 @@ const loginController = async (req, res) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
+    console.log(await User.find());
     const user = await User.findOne({ email });
     if (!user) {
       return res

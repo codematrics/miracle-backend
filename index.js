@@ -6,6 +6,7 @@ require("dotenv").config();
 const serverless = require("serverless-http");
 
 const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
 const patientRoutes = require("./routes/patient");
 const appointmentRoutes = require("./routes/appointment");
 const bedRoutes = require("./routes/bed");
@@ -56,6 +57,7 @@ app.use(
 
 // ✅ Routes
 app.use("/api/lab", apiLimiter, labRoutes);
+app.use("/api/users", apiLimiter, userRoutes);
 app.use("/api/bed", apiLimiter, bedRoutes);
 app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/appointment", apiLimiter, appointmentRoutes);

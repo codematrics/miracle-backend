@@ -29,6 +29,7 @@ const createDoctorSchema = z.object({
     .optional(),
   country: z.string().optional(),
   isActive: z.boolean().optional(),
+  password: z.string(),
 });
 
 const updateDoctorSchema = z.object({
@@ -70,6 +71,7 @@ const updateDoctorSchema = z.object({
     .optional(),
   country: z.string().optional(),
   isActive: z.boolean().optional(),
+  password: z.string().optional(),
 });
 
 module.exports = { createDoctorSchema, updateDoctorSchema };

@@ -13,12 +13,23 @@ const createDoctorController = async (req, res) => {
 
     // Check for existing licenseNumber
     const existing = await Doctor.findOne({
-      licenseNumber: validatedData.licenseNumber,
+      $or: [
+        {
+          licenseNumber: validatedData.licenseNumber,
+        },
+        {
+          email: validatedData.email,
+        },
+        {
+          emergencyContact: validatedData.emergencyContact,
+        },
+      ],
     });
 
     if (existing) {
       return res.status(400).json({
-        message: "Doctor with this license number already exists",
+        message:
+          "Doctor with this license number or email or contact already exists",
         data: null,
         status: false,
       });
@@ -98,7 +109,13 @@ const listDoctorsController = async (req, res) => {
     const doctors = await Doctor.find(query)
       .sort({ [sortBy]: sortOrder })
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .populate("userId");
+
+    const mappedData = doctors.map((d) => ({
+      ...d?.toObject(),
+      password: d.userId?.password,
+    }));
 
     return res.json({
       message: "Doctors fetched successfully",
@@ -106,7 +123,7 @@ const listDoctorsController = async (req, res) => {
         total,
         page: pageNum,
         limit: limitNum,
-        doctors,
+        doctors: mappedData,
       },
       status: true,
     });
@@ -127,6 +144,7 @@ const updateDoctorController = async (req, res) => {
     const existing = await Doctor.findOne({
       _id: id,
     });
+
     if (!existing) {
       return res.status(400).json({
         message: "Doctor with this Id Not Found",
@@ -136,6 +154,15 @@ const updateDoctorController = async (req, res) => {
     }
 
     const doctor = await Doctor.findByIdAndUpdate(id, validatedData);
+
+    if (
+      validatedData.name ||
+      validatedData.password ||
+      validatedData.email ||
+      validatedData.emergencyContact
+    ) {
+      await User.findByIdAndUpdate(doctor.userId, validatedData);
+    }
 
     return res.json({
       message: "Doctor updated successfully",
