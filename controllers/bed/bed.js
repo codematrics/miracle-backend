@@ -72,6 +72,7 @@ const listBedsController = async (req, res) => {
 
     const total = await Beds.countDocuments(query);
     const beds = await Beds.find(query)
+      .populate("patientId")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
