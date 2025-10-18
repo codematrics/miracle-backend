@@ -29,7 +29,14 @@ const createDoctorSchema = z.object({
     .optional(),
   country: z.string().optional(),
   isActive: z.boolean().optional(),
-  password: z.string(),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters")
+    .max(128, "Password too long")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    ),
 });
 
 const updateDoctorSchema = z.object({
@@ -71,7 +78,15 @@ const updateDoctorSchema = z.object({
     .optional(),
   country: z.string().optional(),
   isActive: z.boolean().optional(),
-  password: z.string().optional(),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters")
+    .max(128, "Password too long")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    )
+    .optional(),
 });
 
 module.exports = { createDoctorSchema, updateDoctorSchema };
