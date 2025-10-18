@@ -4,6 +4,7 @@ const RadiologyReport = require("../../models/RadioLogyReport");
 const PdfPrinter = require("pdfmake");
 const path = require("path");
 const { ROLES } = require("../../constants/enums");
+const { htmlToText } = require("html-to-text");
 
 const listLabTestController = async (req, res) => {
   try {
@@ -2340,7 +2341,9 @@ const printRadiologyReport = async (req, res) => {
       },
     };
     const printer = new PdfPrinter(fonts);
-
+    const templateContentText = htmlToText(radiologyReport.templateContent, {
+      wordwrap: 130,
+    });
     // Prepare radiology report data
     const reportData = {
       UHID: patient?.uhidNo || patient?.patientId || "N/A",
@@ -2361,6 +2364,7 @@ const printRadiologyReport = async (req, res) => {
       impression: radiologyReport.impression || "Not specified",
       methodology: radiologyReport.methodology || "Not specified",
       authorizedBy: radiologyReport.authorizedBy?.name || "Lab Technician",
+      templateContent: templateContentText || "",
     };
 
     // --- PDF Definition ---
@@ -2471,6 +2475,16 @@ const printRadiologyReport = async (req, res) => {
         },
 
         // Methodology Section
+        {
+          text: "Report:",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 10],
+        },
+        {
+          text: reportData.templateContent,
+          style: "contentText",
+          margin: [0, 0, 0, 20],
+        },
         {
           text: "METHODOLOGY:",
           style: "sectionHeader",

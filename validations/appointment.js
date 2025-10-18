@@ -3,6 +3,7 @@ const { z } = require("zod");
 const createAppointmentSchema = z.object({
   patient: z.string().min(1, { message: "Patient is required" }),
   doctor: z.string().min(1, { message: "Doctor is required" }),
+  status: z.enum(["scheduled", "completed", "cancelled"]),
   appointmentDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date" })
@@ -23,6 +24,7 @@ const createAppointmentSchema = z.object({
 const updateAppointmentSchema = z.object({
   patient: z.string().min(1, { message: "Patient is required" }).optional(),
   doctor: z.string().min(1, { message: "Doctor is required" }).optional(),
+  status: z.enum(["scheduled", "completed", "cancelled"]).optional(),
   appointmentDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date" })
