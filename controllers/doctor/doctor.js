@@ -41,7 +41,7 @@ const createDoctorController = async (req, res) => {
       email: validatedData.email,
       mobileNumber: validatedData.mobileNo,
       role: ROLES.DOCTOR,
-      password: validatedData.mobileNo,
+      password: validatedData.password || validatedData.mobileNo,
     });
 
     user.save();
