@@ -7,9 +7,16 @@ const createAppointmentSchema = z.object({
     .string()
     .refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date" })
     .transform((val) => new Date(val))
-    .refine((date) => date > new Date(), {
-      message: "Invalid appointment date",
-    }),
+    .refine(
+      (date) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return date >= today;
+      },
+      {
+        message: "Invalid appointment date",
+      }
+    ),
   reason: z.string().min(1, { message: "Reason is required" }),
 });
 
