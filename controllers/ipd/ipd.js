@@ -191,7 +191,13 @@ const listIPDController = async (req, res) => {
 
     const total = await IPD.countDocuments(query);
     const ipd = await IPD.find(query)
-      .populate("patient bed referringDoctor services.serviceId")
+      .populate("patient referringDoctor services.serviceId")
+      .populate({
+        path: "bed",
+        populate: {
+          path: "ward",
+        },
+      })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
@@ -306,7 +312,6 @@ const updateIPDController = async (req, res) => {
       }
     }
 
-    console.log(validatedData);
     const ipd = await IPD.findByIdAndUpdate(id, validatedData);
 
     return res.json({

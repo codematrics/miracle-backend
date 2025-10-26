@@ -10,6 +10,8 @@ const userRoutes = require("./routes/user");
 const patientRoutes = require("./routes/patient");
 const appointmentRoutes = require("./routes/appointment");
 const bedRoutes = require("./routes/bed");
+const floorRoutes = require("./routes/floor");
+const wardRoutes = require("./routes/ward");
 const parametersRoutes = require("./routes/parameters");
 const labParametersRoutes = require("./routes/labParameter");
 const serviceRoutes = require("./routes/service");
@@ -29,8 +31,6 @@ const {
   authLimiter,
   apiLimiter,
 } = require("./middleware/security");
-const { requireAuth } = require("./middleware/auth");
-const { ROLES } = require("./constants/enums");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -59,6 +59,8 @@ app.use(
 app.use("/api/lab", apiLimiter, labRoutes);
 app.use("/api/users", apiLimiter, userRoutes);
 app.use("/api/bed", apiLimiter, bedRoutes);
+app.use("/api/floors", apiLimiter, floorRoutes);
+app.use("/api/wards", apiLimiter, wardRoutes);
 app.use("/api/lab-tests", apiLimiter, labTestRoutes);
 app.use("/api/appointment", apiLimiter, appointmentRoutes);
 app.use("/api/auth", authLimiter, authRoutes);

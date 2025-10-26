@@ -8,8 +8,11 @@ const bedSchema = new mongoose.Schema(
       enum: ["available", "occupied", "maintenance"],
       default: "available",
     },
-    type: { type: String, enum: ["general", "icu", "ward"], required: true },
-    ward: { type: String, required: true },
+    ward: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Ward",
+      required: true,
+    },
     patientId: { type: mongoose.Schema.Types.ObjectId, ref: "Patient" },
   },
   { timestamps: true }

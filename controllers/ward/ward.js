@@ -1,46 +1,34 @@
 const { default: z } = require("zod");
-const { createBedSchema, updateBedSchema } = require("../../validations/bed");
-const Beds = require("../../models/Beds");
+const {
+  createWardSchema,
+  updateWardSchema,
+} = require("../../validations/ward");
 const Ward = require("../../models/Ward");
 
-const createBedController = async (req, res) => {
+const createWardController = async (req, res) => {
   try {
-    const validatedData = createBedSchema.parse(req.body);
+    const validatedData = createWardSchema.parse(req.body);
 
-    // Check for existing bedNumber
-    const existing = await Beds.findOne({
-      bedNumber: validatedData.bedNumber,
+    // Check for existing ward
+    const existing = await Ward.findOne({
+      name: validatedData.name,
     });
-
     if (existing) {
       return res.status(400).json({
-        message: "Bed with this number already exists",
+        message: "Ward with this name already exists",
         data: null,
         status: false,
       });
     }
 
-    const existingWard = await Ward.findOne({
-      _id: validatedData.ward,
-    });
-
-    if (!existingWard) {
-      return res.status(400).json({
-        message: "Ward does not exists",
-        data: null,
-        status: false,
-      });
-    }
-
-    const bed = new Beds({
+    const ward = new Ward({
       ...validatedData,
-      bedNumber: `BED-${Date.now()}`,
     });
-    await bed.save();
+    await ward.save();
 
     return res.json({
-      message: "Bed created successfully",
-      data: bed,
+      message: "Ward created successfully",
+      data: ward,
       status: true,
     });
   } catch (error) {
@@ -60,15 +48,9 @@ const createBedController = async (req, res) => {
   }
 };
 
-const listBedsController = async (req, res) => {
+const listWardController = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      ward = "",
-      search = "",
-      status = "",
-    } = req.query;
+    const { page = 1, limit = 10, search = "", status = "" } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
@@ -76,7 +58,7 @@ const listBedsController = async (req, res) => {
     // Build search query
     const searchRegex = new RegExp(search, "i");
     const query = {
-      $or: search ? [{ ward: searchRegex }] : [],
+      $or: [{ name: searchRegex }],
       $and: [
         status && {
           status: status,
@@ -84,25 +66,19 @@ const listBedsController = async (req, res) => {
       ].filter(Boolean),
     };
 
-    const total = await Beds.countDocuments(query);
-    const beds = await Beds.find(query)
-      .populate("patientId")
-      .populate({
-        path: "ward",
-        populate: {
-          path: "floor",
-        },
-      })
+    const total = await Ward.countDocuments(query);
+    const wards = await Ward.find(query)
+      .populate("floor")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
     return res.json({
-      message: "Beds fetched successfully",
+      message: "Wards fetched successfully",
       data: {
         total,
         page: pageNum,
         limit: limitNum,
-        beds,
+        wards,
       },
       status: true,
     });
@@ -114,41 +90,28 @@ const listBedsController = async (req, res) => {
   }
 };
 
-const updateBedController = async (req, res) => {
+const updateWardController = async (req, res) => {
   try {
     const id = req.params.id;
-    const validatedData = updateBedSchema.parse(req.body);
+    const validatedData = updateWardSchema.parse(req.body);
 
-    // Check for existing bed
-    const existing = await Beds.findOne({
+    // Check for existing ward
+    const existing = await Ward.findOne({
       _id: id,
     });
-
     if (!existing) {
       return res.status(400).json({
-        message: "Bed with this Id Not Found",
+        message: "Ward with this Id Not Found",
         data: null,
         status: false,
       });
     }
 
-    const existingWard = await Ward.findOne({
-      _id: validatedData.ward,
-    });
-
-    if (!existingWard) {
-      return res.status(400).json({
-        message: "Ward does not exists",
-        data: null,
-        status: false,
-      });
-    }
-
-    const bed = await Beds.findByIdAndUpdate(id, validatedData);
+    const ward = await Ward.findByIdAndUpdate(id, validatedData);
 
     return res.json({
-      message: "Bed updated successfully",
-      data: bed,
+      message: "Ward updated successfully",
+      data: ward,
       status: true,
     });
   } catch (error) {
@@ -168,22 +131,22 @@ const updateBedController = async (req, res) => {
   }
 };
 
-const deleteBedController = async (req, res) => {
+const deleteWardController = async (req, res) => {
   try {
     const id = req.params.id;
 
-    // Check for existing bed
-    const existing = await Beds.findByIdAndDelete(id);
+    // Check for existing ward
+    const existing = await Ward.findByIdAndDelete(id);
     if (!existing) {
       return res.status(400).json({
-        message: "Bed with this Id Not Found",
+        message: "Ward with this Id Not Found",
         data: null,
         status: false,
       });
     }
 
     return res.json({
-      message: "Bed deleted successfully",
+      message: "Ward deleted successfully",
       data: null,
       status: true,
     });
@@ -196,9 +159,15 @@ const deleteBedController = async (req, res) => {
   }
 };
 
-const getBedDropdownController = async (req, res) => {
+const getWardDropdownController = async (req, res) => {
   try {
-    const { search = "", page = 1, limit = 10, status } = req.query;
+    const {
+      search = "",
+      page = 1,
+      limit = 10,
+      floorId = "",
+      status,
+    } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
@@ -206,24 +175,28 @@ const getBedDropdownController = async (req, res) => {
     // Build search query
     const searchRegex = new RegExp(search, "i");
     const query = {
-      $or: search ? [{ ward: searchRegex }] : [],
+      $or: [{ name: searchRegex }],
       $and: [
         status && {
           status: status,
         },
+        floorId && {
+          floor: floorId,
+        },
       ].filter(Boolean),
     };
 
-    const total = await Beds.countDocuments(query);
-    const beds = await Beds.find(query)
+    const total = await Ward.countDocuments(query);
+    const wards = await Ward.find(query)
+      .populate("floor")
       .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
     // Map to dropdown format
-    const data = beds.map((d) => ({
+    const data = wards.map((d) => ({
       value: d._id,
-      label: `${d.ward} | ${d.bedNumber || "-"} | ${d.type || "-"} | ${
+      label: `${d.name} | ${d.type || "-"} | ${d.floor?.name || "-"} | ${
         d.status || "-"
       }`,
     }));
@@ -241,9 +214,9 @@ const getBedDropdownController = async (req, res) => {
 };
 
 module.exports = {
-  listBedsController,
-  createBedController,
-  updateBedController,
-  deleteBedController,
-  getBedDropdownController,
+  listWardController,
+  createWardController,
+  updateWardController,
+  deleteWardController,
+  getWardDropdownController,
 };
