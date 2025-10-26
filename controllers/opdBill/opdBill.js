@@ -15,6 +15,8 @@ const {
 } = require("../../validations/opdBillingSchema");
 const LabOrderTest = require("../../models/LabOrderTest");
 const { generateVisitID } = require("../visit/visit");
+const PdfPrinter = require("pdfmake");
+const path = require("path");
 
 const listOPDController = async (req, res) => {
   try {
@@ -289,9 +291,324 @@ const getOneOPDController = async (req, res) => {
   }
 };
 
+const printOpdBill = async (req, res) => {
+  try {
+    const billId = req.params.id;
+
+    if (!billId) {
+      return res.status(400).json({
+        message: "Bill ID is required",
+        status: false,
+      });
+    }
+
+    // --- Fetch and populate OPD Billing data ---
+    const opdBill = await OpdBilling.findById(billId)
+      .populate({
+        path: "patient",
+        model: "Patient",
+      })
+      .populate({
+        path: "consultantDoctor",
+        model: "Doctor",
+      })
+      .populate({
+        path: "visit",
+        model: "Visit",
+      })
+      .populate({
+        path: "services.serviceId",
+        model: "Service",
+      });
+
+    if (!opdBill) {
+      return res.status(404).json({
+        message: "OPD bill not found",
+        status: false,
+      });
+    }
+
+    // --- Prepare PDF data ---
+    const patient = opdBill.patient;
+    const doctor = opdBill.consultantDoctor;
+    const services = opdBill.services || [];
+
+    // --- Font Configuration (with italics fix) ---
+    const fonts = {
+      Roboto: {
+        normal: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Regular.ttf"
+        ),
+        bold: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Medium.ttf"
+        ),
+        italics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Italic.ttf"
+        ),
+        bolditalics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-MediumItalic.ttf"
+        ),
+      },
+    };
+
+    const printer = new PdfPrinter(fonts);
+
+    // --- Calculate totals ---
+    const { grossAmount, discount, netAmount } = opdBill.billing;
+
+    // --- PDF Definition ---
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 40],
+      content: [
+        // Header Logo
+        {
+          image: path.join(__dirname, "../../assets/header_prescription.jpg"),
+          width: 480,
+          alignment: "center",
+        },
+        { text: "\n" },
+
+        {
+          text: "OUTPATIENT BILL RECEIPT",
+          style: "reportTitle",
+          alignment: "center",
+          margin: [0, 0, 0, 15],
+        },
+
+        // 👇 Improved Patient & Bill Details Section
+        {
+          table: {
+            widths: ["50%", "50%"],
+            body: [
+              [
+                {
+                  stack: [
+                    { text: "PATIENT INFORMATION", style: "sectionHeader" },
+                    {
+                      canvas: [
+                        {
+                          type: "line",
+                          x1: 0,
+                          y1: 0,
+                          x2: 240,
+                          y2: 0,
+                          lineWidth: 1,
+                          lineColor: "#341f62",
+                        },
+                      ],
+                    },
+                    { text: "\n" },
+                    {
+                      table: {
+                        widths: ["35%", "65%"],
+                        body: [
+                          ["UHID", patient?.uhidNo || "N/A"],
+                          ["Name", patient?.name || "N/A"],
+                          [
+                            "Age / Gender",
+                            `${patient?.age || "-"} / ${
+                              patient?.gender || "-"
+                            }`,
+                          ],
+                          ["Mobile", patient?.mobileNumber || "-"],
+                          [
+                            "Address",
+                            patient?.address
+                              ? `${patient.address.street || ""}, ${
+                                  patient.address.post || ""
+                                }, ${patient.address.tehsil || ""}, ${
+                                  patient.address.district || ""
+                                }, ${patient.address.state || ""} - ${
+                                  patient.address.pincode || ""
+                                }`
+                              : "—",
+                          ],
+                        ],
+                      },
+                      layout: {
+                        hLineWidth: () => 0,
+                        vLineWidth: () => 0,
+                        paddingLeft: () => 0,
+                        paddingRight: () => 0,
+                        paddingTop: () => 2,
+                        paddingBottom: () => 2,
+                      },
+                      style: "infoTable",
+                    },
+                  ],
+                },
+                {
+                  stack: [
+                    { text: "BILL DETAILS", style: "sectionHeader" },
+                    {
+                      canvas: [
+                        {
+                          type: "line",
+                          x1: 0,
+                          y1: 0,
+                          x2: 240,
+                          y2: 0,
+                          lineWidth: 1,
+                          lineColor: "#341f62",
+                        },
+                      ],
+                    },
+                    { text: "\n" },
+                    {
+                      table: {
+                        widths: ["45%", "55%"],
+                        body: [
+                          ["Bill No", opdBill.billId],
+                          [
+                            "Bill Date",
+                            new Date(opdBill.billDate).toLocaleDateString(),
+                          ],
+                          ["Doctor", doctor?.name || "N/A"],
+                          ["Payment Mode", opdBill.paymentMode || "Cash"],
+                        ],
+                      },
+                      layout: {
+                        hLineWidth: () => 0,
+                        vLineWidth: () => 0,
+                        paddingLeft: () => 0,
+                        paddingRight: () => 0,
+                        paddingTop: () => 2,
+                        paddingBottom: () => 2,
+                      },
+                      style: "infoTable",
+                    },
+                  ],
+                },
+              ],
+            ],
+          },
+          layout: "noBorders",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Service Table (kept same as before)
+        {
+          text: "SERVICES DETAILS",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 8],
+        },
+        {
+          table: {
+            widths: ["10%", "45%", "15%", "15%", "15%"],
+            body: [
+              [
+                { text: "S.No", style: "tableHeader" },
+                { text: "Service Name", style: "tableHeader" },
+                { text: "Qty", style: "tableHeader" },
+                { text: "Price", style: "tableHeader" },
+                { text: "Amount", style: "tableHeader" },
+              ],
+              ...services.map((item, index) => [
+                { text: index + 1, style: "tableCell" },
+                {
+                  text: item.serviceId?.serviceName || "-",
+                  style: "tableCell",
+                },
+                { text: item.quantity || 1, style: "tableCell" },
+                { text: item.price?.toFixed(2) || "0.00", style: "tableCell" },
+                { text: item.amount?.toFixed(2) || "0.00", style: "tableCell" },
+              ]),
+            ],
+          },
+          layout: "lightHorizontalLines",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Totals Section
+        {
+          columns: [
+            { width: "*", text: "" },
+            {
+              width: "40%",
+              table: {
+                widths: ["50%", "50%"],
+                body: [
+                  ["Gross Amount", grossAmount.toFixed(2)],
+                  ["Discount", discount.toFixed(2)],
+                  ["Net Amount", netAmount.toFixed(2)],
+                  ["Paid Amount", opdBill.paidAmount.toFixed(2)],
+                ],
+              },
+              layout: "noBorders",
+              style: "infoTable",
+            },
+          ],
+          margin: [0, 10, 0, 20],
+        },
+
+        // Footer
+
+        {
+          text: `Generated on ${new Date().toLocaleString()}`,
+          style: "footer",
+          alignment: "center",
+        },
+      ],
+
+      styles: {
+        reportTitle: {
+          fontSize: 16,
+          bold: true,
+          color: "#341f62",
+        },
+        sectionHeader: {
+          fontSize: 13,
+          bold: true,
+          color: "#341f62",
+          margin: [0, 5, 0, 5],
+        },
+        infoTable: {
+          fontSize: 10,
+          color: "#333333",
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 10,
+          fillColor: "#f2f2f2",
+        },
+        tableCell: {
+          fontSize: 9,
+        },
+        footer: {
+          fontSize: 9,
+          color: "#555",
+          italics: true,
+        },
+      },
+    };
+
+    // Generate and send PDF
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=opd-bill-${billId}.pdf`,
+    });
+
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Server error while printing OPD bill",
+      status: false,
+    });
+  }
+};
+
 module.exports = {
   createOPDBill,
   listOPDController,
   getOneOPDController,
   updateOPDController,
+  printOpdBill,
 };

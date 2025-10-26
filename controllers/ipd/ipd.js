@@ -14,6 +14,8 @@ const LabOrder = require("../../models/LabOrder");
 const LabOrderTest = require("../../models/LabOrderTest");
 const Visit = require("../../models/Visit");
 const { generateVisitID } = require("../visit/visit");
+const path = require("path");
+const PdfPrinter = require("pdfmake");
 
 const createIPDController = async (req, res) => {
   try {
@@ -336,8 +338,282 @@ const updateIPDController = async (req, res) => {
   }
 };
 
+const printIpdBill = async (req, res) => {
+  try {
+    const billId = req.params.id;
+    if (!billId) {
+      return res
+        .status(400)
+        .json({ message: "Bill ID is required", status: false });
+    }
+
+    // Fetch IPD bill with necessary populates
+    const ipdBill = await IPD.findById(billId)
+      .populate({ path: "patient", model: "Patient" })
+      .populate({ path: "referringDoctor", model: "Doctor" })
+      .populate({
+        path: "bed",
+        model: "Bed",
+        populate: {
+          path: "ward",
+          model: "Ward",
+          populate: { path: "floor", model: "Floor" },
+        },
+      })
+      .populate({ path: "services.serviceId", model: "Service" });
+
+    if (!ipdBill) {
+      return res
+        .status(404)
+        .json({ message: "IPD bill not found", status: false });
+    }
+
+    const patient = ipdBill.patient;
+    const doctor = ipdBill.referringDoctor;
+    const bed = ipdBill.bed;
+    const ward = bed?.ward;
+    const floor = ward?.floor;
+    const services = ipdBill.services || [];
+
+    const fonts = {
+      Roboto: {
+        normal: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Regular.ttf"
+        ),
+        bold: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Medium.ttf"
+        ),
+        italics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-Italic.ttf"
+        ),
+        bolditalics: path.join(
+          __dirname,
+          "../../assets/Roboto/static/Roboto-MediumItalic.ttf"
+        ),
+      },
+    };
+    const printer = new PdfPrinter(fonts);
+
+    // --- PDF Content ---
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 40],
+      content: [
+        {
+          image: path.join(__dirname, "../../assets/header_prescription.jpg"),
+          width: 480,
+          alignment: "center",
+        },
+        { text: "\n" },
+        {
+          text: "INPATIENT BILL RECEIPT",
+          style: "reportTitle",
+          alignment: "center",
+          margin: [0, 0, 0, 15],
+        },
+
+        // Patient & Bill Details
+        {
+          columns: [
+            {
+              width: "50%",
+              stack: [
+                { text: "PATIENT INFORMATION", style: "sectionHeader" },
+                {
+                  text: [
+                    { text: "UHID: ", style: "labelBold" },
+                    { text: patient?.uhidNo || "-", style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Name: ", style: "labelBold" },
+                    { text: patient?.name || "-", style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Age/Gender: ", style: "labelBold" },
+                    {
+                      text: `${patient?.age || "-"} / ${
+                        patient?.gender || "-"
+                      }`,
+                      style: "normalText",
+                    },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Mobile: ", style: "labelBold" },
+                    { text: patient?.mobileNumber || "-", style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Address: ", style: "labelBold" },
+                    {
+                      text: patient?.address
+                        ? `${patient.address.street || ""}, ${
+                            patient.address.post || ""
+                          }, ${patient.address.tehsil || ""}, ${
+                            patient.address.district || ""
+                          }, ${patient.address.state || ""} - ${
+                            patient.address.pincode || ""
+                          }`
+                        : "-",
+                      style: "normalText",
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              width: "50%",
+              stack: [
+                { text: "BILL DETAILS", style: "sectionHeader" },
+                {
+                  text: [
+                    { text: "Bill No: ", style: "labelBold" },
+                    { text: ipdBill.billNumber, style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Bed: ", style: "labelBold" },
+                    { text: bed?.bedNumber || "-", style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Ward/Floor: ", style: "labelBold" },
+                    {
+                      text: `${ward?.name || "-"} / ${floor?.name || "-"}`,
+                      style: "normalText",
+                    },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Doctor: ", style: "labelBold" },
+                    { text: doctor?.name || "-", style: "normalText" },
+                  ],
+                },
+                {
+                  text: [
+                    { text: "Status: ", style: "labelBold" },
+                    { text: ipdBill.patientStatus, style: "normalText" },
+                  ],
+                },
+              ],
+            },
+          ],
+          margin: [0, 0, 0, 20],
+        },
+
+        // Services Table
+        {
+          text: "SERVICES DETAILS",
+          style: "sectionHeader",
+          margin: [0, 0, 0, 8],
+        },
+        {
+          table: {
+            widths: ["5%", "45%", "15%", "15%", "20%"],
+            body: [
+              [
+                { text: "S.No", style: "tableHeader" },
+                { text: "Service Name", style: "tableHeader" },
+                { text: "Qty", style: "tableHeader" },
+                { text: "Price", style: "tableHeader" },
+                { text: "Amount", style: "tableHeader" },
+              ],
+              ...services.map((item, idx) => [
+                { text: idx + 1, style: "tableCell" },
+                {
+                  text: item.serviceId?.serviceName || "-",
+                  style: "tableCell",
+                },
+                { text: item.quantity || 1, style: "tableCell" },
+                { text: item.price?.toFixed(2) || "0.00", style: "tableCell" },
+                {
+                  text: ((item.price || 0) * (item.quantity || 1)).toFixed(2),
+                  style: "tableCell",
+                },
+              ]),
+            ],
+          },
+          layout: "lightHorizontalLines",
+          margin: [0, 0, 0, 20],
+        },
+
+        // Totals
+        {
+          columns: [
+            { width: "*", text: "" },
+            {
+              width: "40%",
+              table: {
+                widths: ["50%", "50%"],
+                body: [
+                  ["Total Amount", ipdBill.totalAmount.toFixed(2)],
+                  ["Discount", ipdBill.discount.toFixed(2)],
+                  ["Net Amount", ipdBill.netAmount.toFixed(2)],
+                  ["Paid Amount", ipdBill.paidAmount.toFixed(2)],
+                  ["Due Amount", ipdBill.dueAmount.toFixed(2)],
+                ],
+              },
+              layout: "noBorders",
+            },
+          ],
+          margin: [0, 10, 0, 20],
+        },
+
+        // Footer
+        {
+          text: `Generated on ${new Date().toLocaleString()}`,
+          style: "footer",
+          alignment: "center",
+        },
+      ],
+
+      styles: {
+        reportTitle: { fontSize: 16, bold: true, color: "#341f62" },
+        sectionHeader: {
+          fontSize: 13,
+          bold: true,
+          color: "#341f62",
+          margin: [0, 10, 0, 5],
+        },
+        labelBold: { fontSize: 10, bold: true },
+        normalText: { fontSize: 10 },
+        tableHeader: { bold: true, fontSize: 10, fillColor: "#f2f2f2" },
+        tableCell: { fontSize: 9 },
+        footer: { fontSize: 9, color: "#555", italics: true },
+      },
+    };
+
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=ipd-bill-${billId}.pdf`,
+    });
+
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    console.error("Error generating IPD bill:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error while printing IPD bill", status: false });
+  }
+};
+
 module.exports = {
   listIPDController,
   createIPDController,
   updateIPDController,
+  printIpdBill,
 };

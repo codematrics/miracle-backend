@@ -1,27 +1,11 @@
 const express = require("express");
 const OpdBilling = require("../models/OpdBilling");
-const Patient = require("../models/Patient");
-const Service = require("../models/Service");
-const Doctor = require("../models/Doctor");
-const { validate } = require("../middleware/validation");
-const {
-  createOpdBillingSchema,
-  updateOpdBillingSchema,
-  opdBillingQuerySchema,
-} = require("../validations/opdBillingSchema");
-const {
-  paginate,
-  buildSearchQuery,
-  buildDateRangeQuery,
-  combineQueries,
-} = require("../lib/pagination");
-const LabOrder = require("../models/LabOrder");
-const { ORDER_STATUS } = require("../constants/enums");
 const {
   createOPDBill,
   listOPDController,
   getOneOPDController,
   updateOPDController,
+  printOpdBill,
 } = require("../controllers/opdBill/opdBill");
 
 const router = express.Router();
@@ -30,6 +14,7 @@ router.get("/", listOPDController);
 router.get("/:id", getOneOPDController);
 router.post("/", createOPDBill);
 router.put("/:id", updateOPDController);
+router.get("/export/:id", printOpdBill);
 
 // DELETE /api/opd-billing/:id - Delete OPD Bill
 router.delete("/:id", async (req, res) => {
