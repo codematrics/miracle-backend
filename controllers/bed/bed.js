@@ -2,53 +2,76 @@ const { default: z } = require("zod");
 const { createBedSchema, updateBedSchema } = require("../../validations/bed");
 const Beds = require("../../models/Beds");
 const Ward = require("../../models/Ward");
+const Floor = require("../../models/Floor");
 
 const createBedController = async (req, res) => {
   try {
     const validatedData = createBedSchema.parse(req.body);
 
-    // Check for existing bedNumber
-    const existing = await Beds.findOne({
-      bedNumber: validatedData.bedNumber,
-    });
-
-    if (existing) {
-      return res.status(400).json({
-        message: "Bed with this number already exists",
-        data: null,
-        status: false,
-      });
-    }
-
-    const existingWard = await Ward.findOne({
-      _id: validatedData.ward,
-    });
-
+    // Validate ward
+    const existingWard = await Ward.findById(validatedData.ward);
     if (!existingWard) {
       return res.status(400).json({
-        message: "Ward does not exists",
+        message: "Ward does not exist",
         data: null,
         status: false,
       });
     }
 
-    const bed = new Beds({
-      ...validatedData,
-      bedNumber: `BED-${Date.now()}`,
-    });
-    await bed.save();
+    // Validate floor
+    const existingFloor = await Floor.findById(validatedData.floor);
+    if (!existingFloor) {
+      return res.status(400).json({
+        message: "Floor does not exist",
+        data: null,
+        status: false,
+      });
+    }
+
+    // Create multiple beds in the given range
+    const bedsToCreate = [];
+    for (
+      let num = validatedData.bedNumberFrom;
+      num <= validatedData.bedNumberTo;
+      num++
+    ) {
+      // Check if this bed number already exists
+      const existingBed = await Beds.findOne({ bedNumber: num });
+      if (existingBed) {
+        continue; // skip existing beds
+      }
+
+      bedsToCreate.push({
+        bedNumber: num,
+        status: validatedData.status || "available",
+        type: validatedData.type,
+        ward: validatedData.ward,
+        floor: validatedData.floor,
+      });
+    }
+
+    if (bedsToCreate.length === 0) {
+      return res.status(400).json({
+        message: "All bed numbers in this range already exist",
+        data: null,
+        status: false,
+      });
+    }
+
+    const createdBeds = await Beds.insertMany(bedsToCreate);
 
     return res.json({
-      message: "Bed created successfully",
-      data: bed,
+      message: "Beds created successfully",
+      data: createdBeds,
       status: true,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.log(error);
-      return res
-        .status(400)
-        .json({ message: error.issues[0]?.message, data: null, status: false });
+      return res.status(400).json({
+        message: error.issues[0]?.message,
+        data: null,
+        status: false,
+      });
     }
 
     console.error(error);
