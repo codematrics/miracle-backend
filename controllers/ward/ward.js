@@ -70,8 +70,8 @@ const listWardController = async (req, res) => {
     const wards = await Ward.find(query)
       .populate("floor")
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
-
+      .limit(limitNum)
+      .sort({ createdAt: -1 });
     return res.json({
       message: "Wards fetched successfully",
       data: {

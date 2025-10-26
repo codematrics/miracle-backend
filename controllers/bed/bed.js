@@ -117,7 +117,8 @@ const listBedsController = async (req, res) => {
         },
       })
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .sort({ createdAt: -1 });
 
     return res.json({
       message: "Beds fetched successfully",

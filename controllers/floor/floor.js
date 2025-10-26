@@ -71,8 +71,8 @@ const listFloorController = async (req, res) => {
     const total = await Floor.countDocuments(query);
     const floors = await Floor.find(query)
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
-
+      .limit(limitNum)
+      .sort({ createdAt: -1 });
     return res.json({
       message: "Floors fetched successfully",
       data: {
