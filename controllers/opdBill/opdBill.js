@@ -16,7 +16,39 @@ const {
 const LabOrderTest = require("../../models/LabOrderTest");
 const { generateVisitID } = require("../visit/visit");
 
-exports.createOPDBill = async (req, res) => {
+const listOPDController = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "", status = "" } = req.query;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    const query = {};
+
+    const total = await OpdBilling.countDocuments(query);
+    const opd = await OpdBilling.find(query)
+      .populate("patient visit consultantDoctor services")
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    return res.json({
+      message: "OPD fetched successfully",
+      data: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        opd,
+      },
+      status: true,
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Server error", data: null, status: false });
+  }
+};
+const createOPDBill = async (req, res) => {
   try {
     const validatedData = createOpdBillingSchema.parse(req.body);
 
@@ -113,4 +145,153 @@ exports.createOPDBill = async (req, res) => {
       .status(500)
       .json({ message: "Server error", data: null, status: false });
   }
+};
+
+const updateOPDController = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const validatedData = createOpdBillingSchema.parse(req.body);
+
+    // Check for existing bed
+    const existing = await OpdBilling.findOne({
+      _id: id,
+    });
+
+    if (!existing) {
+      return res.status(400).json({
+        message: "OPD with this Id Not Found",
+        data: null,
+        status: false,
+      });
+    }
+
+    const existingPatient = await Patient.findOne({
+      uhidNo: validatedData?.patient,
+    });
+
+    if (!existingPatient) {
+      return res.status(400).json({
+        message: "Patient with this Id Not Found",
+        data: null,
+        status: false,
+      });
+    }
+
+    if (validatedData.consultantDoctor) {
+      const consultantDoctor = await Doctor.findOne({
+        _id: validatedData.consultantDoctor,
+      });
+
+      if (!consultantDoctor) {
+        return res.status(400).json({
+          message: "Consultant Doctor with this Id Not Found",
+          data: null,
+          status: false,
+        });
+      }
+    }
+
+    if (validatedData.services && validatedData.services.length) {
+      const opdServices = await Service.find({
+        $and: [
+          {
+            _id: {
+              $in: validatedData.services?.map((service) => service.serviceId),
+            },
+          },
+          {
+            serviceApplicableOn: {
+              $in: [SERVICE_APPLICABLE.OPD, SERVICE_APPLICABLE.BOTH],
+            },
+          },
+        ],
+      });
+
+      if (opdServices.length !== (validatedData.services || []).length) {
+        return res.status(404).json({
+          message: "Some Services Not Found",
+          data: null,
+          status: false,
+        });
+      }
+    }
+
+    const opd = await OpdBilling.findByIdAndUpdate(id, {
+      ...validatedData,
+      patient: existingPatient._id,
+    });
+
+    return res.json({
+      message: "OPD updated successfully",
+      data: opd,
+      status: true,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.log(error);
+      return res
+        .status(400)
+        .json({ message: error.issues[0]?.message, data: null, status: false });
+    }
+
+    console.error(error);
+    return res.status(500).json({
+      message: error.message || "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
+const getOneOPDController = async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    // Check for existing bed
+    const existing = await OpdBilling.findOne({
+      _id: id,
+    })
+      .populate("consultantDoctor patient")
+      .populate({
+        path: "services",
+        populate: {
+          path: "serviceId",
+        },
+      });
+
+    if (!existing) {
+      return res.status(400).json({
+        message: "OPD with this Id Not Found",
+        data: null,
+        status: false,
+      });
+    }
+
+    return res.json({
+      message: "OPD fetched successfully",
+      data: existing,
+      status: true,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.log(error);
+      return res
+        .status(400)
+        .json({ message: error.issues[0]?.message, data: null, status: false });
+    }
+
+    console.error(error);
+    return res.status(500).json({
+      message: error.message || "Server error",
+      data: null,
+      status: false,
+    });
+  }
+};
+
+module.exports = {
+  createOPDBill,
+  listOPDController,
+  getOneOPDController,
+  updateOPDController,
 };
