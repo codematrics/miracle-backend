@@ -25,6 +25,8 @@ const createOpdBillingSchema = z
     referredBy: z.string().min(1, "Ref By is required"),
     consultantDoctor: z.string().min(1, "Doctor ID is required").trim(),
     paymentMode: z.enum(PAYMENT_MODES).optional(),
+    mobileNumber: z.string().optional(),
+    referenceNumber: z.string().optional(),
     paidAmount: z
       .number()
       .min(0, "Paid amount must be greater than or equal to 0")
@@ -32,6 +34,22 @@ const createOpdBillingSchema = z
     services: z.array(serviceSchema).min(1, "At least one service is required"),
     billing: billingSchema,
   })
+  .refine(
+    (data) => {
+      if (
+        data.paymentMode === PAYMENT_MODES.CARD ||
+        data.paymentMode === PAYMENT_MODES.UPI
+      ) {
+        return data.referenceNumber && data.mobileNumber;
+      }
+      return true;
+    },
+    {
+      message:
+        "Reference number and mobile number are required for Card or UPI payments",
+      path: ["referenceNumber", "mobileNumber"],
+    }
+  )
   .refine(
     (data) => data.services.every((s) => s.amount === s.price * s.quantity),
     {

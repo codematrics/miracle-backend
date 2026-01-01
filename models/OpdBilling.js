@@ -24,6 +24,14 @@ const OpdBillingSchema = new mongoose.Schema(
       unique: true,
       required: true,
     },
+    mobileNumber: {
+      type: String,
+      required: false,
+    },
+    referenceNumber: {
+      type: String,
+      required: false,
+    },
     visit: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Visit",

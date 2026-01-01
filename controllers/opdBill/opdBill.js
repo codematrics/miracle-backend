@@ -371,6 +371,7 @@ const printOpdBill = async (req, res) => {
 
     // --- Calculate totals ---
     const { grossAmount, discount, netAmount } = opdBill.billing;
+    const balanceAmount = netAmount - (opdBill.paidAmount || 0);
 
     // --- PDF Definition ---
     const docDefinition = {
@@ -549,13 +550,46 @@ const printOpdBill = async (req, res) => {
                   ["Discount", discount.toFixed(2)],
                   ["Net Amount", netAmount.toFixed(2)],
                   ["Paid Amount", opdBill.paidAmount.toFixed(2)],
+                  [
+                    { text: "Balance Amount", bold: true },
+                    { text: balanceAmount.toFixed(2), bold: true },
+                  ],
                 ],
               },
               layout: "noBorders",
               style: "infoTable",
             },
           ],
-          margin: [0, 10, 0, 20],
+          margin: [0, 10, 0, 30],
+        },
+        {
+          columns: [
+            { width: "*", text: "" },
+            {
+              width: "40%",
+              stack: [
+                {
+                  text: "Authorized Signature",
+                  alignment: "center",
+                  margin: [0, 30, 0, 40],
+                  fontSize: 10,
+                },
+                {
+                  canvas: [
+                    {
+                      type: "line",
+                      x1: 0,
+                      y1: 0,
+                      x2: 150,
+                      y2: 0,
+                      lineWidth: 1,
+                    },
+                  ],
+                  alignment: "center",
+                },
+              ],
+            },
+          ],
         },
 
         // Footer
@@ -564,6 +598,7 @@ const printOpdBill = async (req, res) => {
           text: `Generated on ${new Date().toLocaleString()}`,
           style: "footer",
           alignment: "center",
+          margin: [0, 30, 0, 30],
         },
       ],
 

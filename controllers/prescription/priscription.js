@@ -140,7 +140,9 @@ exports.printPrescription = async (req, res) => {
                   text: `${caseSheetData.doctorName} (${caseSheetData.specialization})`,
                 },
                 { text: "Date", bold: true },
-                { text: caseSheetData.visitDate },
+                {
+                  text: format(new Date(caseSheetData.visitDate), "dd/MM/yyyy"),
+                },
               ],
             ],
           },

@@ -2348,7 +2348,7 @@ const printRadiologyReport = async (req, res) => {
     const reportData = {
       UHID: patient?.uhidNo || patient?.patientId || "N/A",
       visitNo: visit?.code || visit?._id || "N/A",
-      testDate: labTestOrder.createdAt.toDateString(),
+      testDate: format(new Date(labTestOrder.createdAt), "dd/MM/yyyy hh:mm"),
       reportDate: radiologyReport.authorizedAt?.toDateString() || "N/A",
       patientName: patient?.name || "N/A",
       age: patient?.age || "N/A",
@@ -2457,14 +2457,26 @@ const printRadiologyReport = async (req, res) => {
                 {
                   text: [
                     { text: "Test Date: ", style: "labelBold" },
-                    { text: reportData.testDate, style: "normalText" },
+                    {
+                      text: format(
+                        new Date(reportData.testDate),
+                        "dd/MM/yyyy hh:mm"
+                      ),
+                      style: "normalText",
+                    },
                   ],
                   margin: [0, 0, 0, 4],
                 },
                 {
                   text: [
                     { text: "Report Date: ", style: "labelBold" },
-                    { text: reportData.reportDate, style: "normalText" },
+                    {
+                      text: format(
+                        new Date(reportData.reportDate),
+                        "dd/MM/yyyy hh:mm"
+                      ),
+                      style: "normalText",
+                    },
                   ],
                   margin: [0, 0, 0, 4],
                 },
@@ -2552,7 +2564,10 @@ const printRadiologyReport = async (req, res) => {
 
         // Footer
         {
-          text: `Report generated on: ${new Date().toLocaleString()}`,
+          text: `Report generated on: ${format(
+            new Date(),
+            "dd/MM/yyyy hh:mm"
+          )}`,
           style: "footer",
           alignment: "center",
           margin: [0, 40, 0, 0],
