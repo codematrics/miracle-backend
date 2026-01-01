@@ -2,6 +2,9 @@ const { z } = require("zod");
 
 const createDoctorSchema = z.object({
   name: z.string().min(1, { message: "Doctor name is required" }),
+  doctorType: z.enum(["REFERRING", "CONSULTING"], {
+    required_error: "Doctor type is required",
+  }),
   specialization: z.string().optional(),
   qualification: z.string().optional(),
   licenseNumber: z.string().min(1, { message: "License number is required" }),
@@ -41,6 +44,11 @@ const createDoctorSchema = z.object({
 
 const updateDoctorSchema = z.object({
   name: z.string().min(1, { message: "Doctor name is required" }).optional(),
+  doctorType: z
+    .enum(["REFERRING", "CONSULTING"], {
+      required_error: "Doctor type is required",
+    })
+    .optional(),
   specialization: z.string().optional(),
   qualification: z.string().optional(),
   licenseNumber: z

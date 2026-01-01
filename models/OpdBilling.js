@@ -39,6 +39,11 @@ const OpdBillingSchema = new mongoose.Schema(
       ref: "Doctor",
       required: true,
     },
+    referringDoctor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+      required: true,
+    },
     paymentMode: {
       type: String,
       enum: PAYMENT_MODES,

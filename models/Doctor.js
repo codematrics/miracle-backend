@@ -4,6 +4,11 @@ const doctorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    doctorType: {
+      type: String,
+      enum: ["REFERRING", "CONSULTING"],
+      required: true,
+    },
     specialization: { type: String },
     qualification: { type: String },
     licenseNumber: { type: String, required: true },

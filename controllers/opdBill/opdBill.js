@@ -30,6 +30,7 @@ const listOPDController = async (req, res) => {
     const total = await OpdBilling.countDocuments(query);
     const opd = await OpdBilling.find(query)
       .populate("patient visit consultantDoctor services")
+      .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
@@ -73,10 +74,20 @@ const createOPDBill = async (req, res) => {
       });
     }
 
+    const referringDoctor = await Doctor.findById(validatedData.referredBy);
+
+    if (!referringDoctor) {
+      return res.status(404).json({
+        message: "Referring Doctor Not Found",
+        data: null,
+        status: false,
+      });
+    }
+
     const visitData = {
       patientId: patient._id,
       consultingDoctorId: doctor._id,
-      referredBy: validatedData.referredBy,
+      referringDoctorId: referringDoctor._id,
       visitType: VISIT_TYPE.OPD,
     };
 
@@ -100,6 +111,7 @@ const createOPDBill = async (req, res) => {
       ...validatedData,
       patient: patient._id,
       consultantDoctor: doctor._id,
+      referringDoctor: referringDoctor._id,
       visit: visit._id,
     });
 
@@ -253,7 +265,7 @@ const getOneOPDController = async (req, res) => {
     const existing = await OpdBilling.findOne({
       _id: id,
     })
-      .populate("consultantDoctor patient")
+      .populate("consultantDoctor referringDoctor patient")
       .populate({
         path: "services",
         populate: {

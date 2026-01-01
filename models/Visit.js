@@ -3,6 +3,17 @@ const { VISIT_STATUS, VISIT_TYPE } = require("../constants/enums");
 const { string } = require("zod");
 const { required } = require("zod/mini");
 
+const ServiceSchema = new mongoose.Schema({
+  serviceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Service",
+    required: true,
+  },
+  price: { type: Number, required: true },
+  quantity: { type: Number, default: 1 },
+  amount: { type: Number, required: true },
+});
+
 const visitSchema = new mongoose.Schema(
   {
     patientId: {
@@ -13,7 +24,7 @@ const visitSchema = new mongoose.Schema(
     code: { type: String, required: true },
     visitDate: { type: Date, default: Date.now },
     consultingDoctorId: { type: mongoose.Schema.Types.ObjectId, ref: "Doctor" },
-    referredBy: { type: String },
+    referringDoctorId: { type: mongoose.Schema.Types.ObjectId, ref: "Doctor" },
     visitType: { type: String, enum: Object.values(VISIT_TYPE) },
     status: {
       type: String,
@@ -28,6 +39,7 @@ const visitSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Prescription",
     },
+    services: [ServiceSchema],
   },
   { timestamps: true }
 );

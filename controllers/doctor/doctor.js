@@ -216,7 +216,7 @@ const deleteDoctorController = async (req, res) => {
 
 const getDoctorDropdownController = async (req, res) => {
   try {
-    const { search = "", page = 1, limit = 10 } = req.query;
+    const { search = "", page = 1, limit = 10, type = "all" } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
@@ -226,6 +226,10 @@ const getDoctorDropdownController = async (req, res) => {
     const query = {
       $or: [{ name: searchRegex }],
     };
+
+    if (type && type !== "all") {
+      query.doctorType = type;
+    }
 
     const total = await Doctor.countDocuments(query);
     const doctors = await Doctor.find(query)

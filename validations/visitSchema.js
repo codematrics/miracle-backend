@@ -10,7 +10,15 @@ const createVisitSchema = z.object({
   medicoLegal: z.boolean().optional(),
   insuranceType: z.string().optional(),
   policyNumber: z.string().optional(),
-  services: z.array(z.string()).optional(), // array of service IDs
+  services: z
+    .array(
+      z.object({
+        value: z.string(),
+        price: z.number(),
+        quantity: z.number().optional(),
+      })
+    )
+    .optional(), // array of service IDs
 });
 
 const updateVisitSchema = createVisitSchema.partial();

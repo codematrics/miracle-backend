@@ -39,6 +39,13 @@ const createVisitController = async (req, res) => {
       medicoLegal: validatedData.medicoLegal || false,
       insuranceType: validatedData.insuranceType,
       policyNumber: validatedData.policyNumber,
+      services:
+        validatedData.services.map((service) => ({
+          serviceId: service.value,
+          price: service.price,
+          quantity: typeof service.quantity === "number" ? service.quantity : 1,
+          amount: service.price,
+        })) || [],
       code: generateVisitID(),
     });
 
@@ -53,7 +60,7 @@ const createVisitController = async (req, res) => {
     if (error instanceof z.ZodError) {
       return res
         .status(400)
-        .json({ message: error.errors[0].message, data: null, status: false });
+        .json({ message: error.issues[0]?.message, data: null, status: false });
     }
     console.error(error);
     return res
