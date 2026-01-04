@@ -16,6 +16,10 @@ const serviceSchema = new mongoose.Schema(
       enum: Object.values(SERVICE_CATEGORY),
       required: true,
     },
+    serviceType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceType",
+    },
     serviceApplicableOn: {
       type: String,
       enum: Object.values(SERVICE_APPLICABLE),

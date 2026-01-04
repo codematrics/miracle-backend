@@ -5,7 +5,11 @@ const {
   updateServiceSchema,
 } = require("../../validations/serviceSchema");
 const LabParameter = require("../../models/LabParameter");
-const { REPORT_TYPE, SERVICE_APPLICABLE } = require("../../constants/enums");
+const {
+  REPORT_TYPE,
+  SERVICE_APPLICABLE,
+  SERVICE_CATEGORY,
+} = require("../../constants/enums");
 
 // Function to generate unique service code
 async function generateServiceCode(category, serviceName) {
@@ -156,6 +160,7 @@ const getServiceDropdownController = async (req, res) => {
       page = 1,
       limit = 10,
       serviceApplicableOn = "",
+      isVisit = "",
     } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
@@ -172,6 +177,11 @@ const getServiceDropdownController = async (req, res) => {
       ...(serviceApplicableOn && {
         serviceApplicableOn: {
           $in: [serviceApplicableOn, SERVICE_APPLICABLE.BOTH],
+        },
+      }),
+      ...(isVisit === "true" && {
+        headType: {
+          $in: [SERVICE_CATEGORY.OTHER, SERVICE_CATEGORY.CONSULTATION],
         },
       }),
     };
@@ -234,6 +244,7 @@ const listServiceController = async (req, res) => {
 
     const total = await Service.countDocuments(query);
     const services = await Service.find(query)
+      .populate("serviceType")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .sort({ createdAt: -1 });

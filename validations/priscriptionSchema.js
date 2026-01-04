@@ -13,9 +13,17 @@ const createPrescriptionSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
   doctorId: z.string().min(1, "Doctor ID is required").optional(),
   visitId: z.string().optional(),
+
   medicines: z
     .array(medicineSchema)
     .min(1, "At least one medicine is required"),
+
+  // ✅ NEW FIELDS
+  provisionalDiagnosis: z.string().optional(),
+  finalDiagnosis: z.string().optional(),
+  investigationAdvised: z.string().optional(),
+  treatment: z.string().optional(),
+
   notes: z.string().optional(),
   followUpDate: z.string().optional(),
 });

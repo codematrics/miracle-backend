@@ -4,6 +4,7 @@ const { FORMAT_TYPE, SAMPLE_TYPE } = require("../constants/enums");
 const createServiceSchema = z.object({
   serviceHead: z.string().min(1, { message: "Service head is required" }),
   serviceName: z.string().min(1, { message: "Service name is required" }),
+  serviceType: z.string().min(1, { message: "Service type is required" }),
   unit: z.string().optional(),
   headType: z.string().optional(),
   serviceApplicableOn: z.enum(["OPD", "IPD", "Both"]),
@@ -22,6 +23,10 @@ const updateServiceSchema = z.object({
   serviceName: z
     .string()
     .min(1, { message: "Service name is required" })
+    .optional(),
+  serviceType: z
+    .string()
+    .min(1, { message: "Service type is required" })
     .optional(),
   unit: z.string().optional(),
   headType: z.string().optional(),

@@ -546,6 +546,7 @@ const printOpdBill = async (req, res) => {
               table: {
                 widths: ["50%", "50%"],
                 body: [
+                  ["Billing Type", opdBill.amountType || "OPD"],
                   ["Gross Amount", grossAmount.toFixed(2)],
                   ["Discount", discount.toFixed(2)],
                   ["Net Amount", netAmount.toFixed(2)],
@@ -556,7 +557,7 @@ const printOpdBill = async (req, res) => {
                   ],
                 ],
               },
-              layout: "noBorders",
+
               style: "infoTable",
             },
           ],
